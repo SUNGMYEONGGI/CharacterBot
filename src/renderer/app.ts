@@ -8,6 +8,7 @@ import {
   type Child, type MenuItem,
 } from './ui';
 import { md, renderDiagrams, openViewer, voiceBubble, toWav16k, blobToDataUrl, clock, parseCsv } from './rich';
+import { initOnboarding, renderOnboarding } from './onboarding';
 
 let S: Broadcast; // latest state snapshot from the main process
 const ui: {
@@ -296,6 +297,31 @@ function toolItem(c: Conv, m: Message): HTMLElement | null {
   if (card?.type === 'skill') return skillCard(c, { ...m, card });
   if (card?.type === 'meeting') return meetingCard(c, { ...m, card });
   if (m.sent && m.effect !== 'deny') return sentLine(m);
+  return teamLine(m);
+}
+
+// "메시지 보냄 (avatars) Bot 4개", "Bot 만듦 (avatar) Reviewer", "팀 만듦 HCI 리뷰어"
+// for what a bot did with create_bot / create_team / message_team.
+function teamLine(m: Message): HTMLElement | null {
+  const short = (m.name || '').replace(/^mcp__characterbot__/, '');
+  if (!m.content || m.content.startsWith('Error')) return null;
+  const a = (m.args || {}) as Record<string, unknown>;
+  const named = (n: unknown) => S.bots.find((b) => b.name.toLowerCase() === String(n).replace(/^@/, '').toLowerCase());
+  const stack = (bots: Bot[]) => h('span', { class: 'av-stack' }, ...bots.slice(0, 4).map((b) => avatar(b, 20)));
+  if (short === 'create_bot') {
+    const bot = named(a.name);
+    return h('div', { class: 'team-line' }, 'Bot 만듦', bot ? avatar(bot, 20) : null, h('b', null, String(a.name)));
+  }
+  if (short === 'create_team' || short === 'add_to_team') {
+    const bots = ((a.bots as string[]) || []).map(named).filter((b): b is Bot => Boolean(b));
+    return h('div', { class: 'team-line' }, short === 'create_team' ? '팀 만듦' : '팀원 추가', h('b', null, String(a.name || a.team)), stack(bots));
+  }
+  if (short === 'message_team') {
+    const team = S.convs.find((c) => c.kind === 'group' && c.name.toLowerCase() === String(a.team).toLowerCase());
+    const mention = ((a.mention as string[]) || []).map(named).filter((b): b is Bot => Boolean(b));
+    const bots = mention.length ? mention : (team?.botIds || []).filter((id) => id !== m.botId).map(botById).filter((b): b is Bot => Boolean(b));
+    return h('button', { class: 'team-line', title: '팀 채팅 열기', onclick: () => team && select(team.id) }, '메시지 보냄', stack(bots), `Bot ${bots.length}개`);
+  }
   return null;
 }
 
@@ -436,6 +462,8 @@ function activityRow(c: Conv): HTMLElement | null {
   const bots = [...new Set([a.botId, ...(a.delegates || []), ...(a.queue || [])])].map(botById).filter((b): b is Bot => Boolean(b));
   if (!bots.length) return null;
   const st = botState(a.botId);
+  // set_status: "학회 정보 검색 중", the subject dark and the verb muted.
+  if (a.status && st !== 'blocked') return h('div', { class: 'activity-row' }, avatar(bots[0], 24), h('span', { class: 'who' }, h('span', { class: 'lead' }, a.status.subject), ' ', h('span', { class: 'verb' }, a.status.verb)));
   const verb = st === 'blocked' ? '승인 기다리는 중' : st === 'streaming' && bots.length === 1 ? '입력 중' : '작업 중';
   const names = bots.map((b, i) => h('span', { class: i ? '' : 'lead' }, b.name));
   const joined = names.flatMap((n, i) => (i === 0 ? [n] : [i === names.length - 1 ? ' 및 ' : ', ', n]));
@@ -1066,8 +1094,11 @@ const ASSISTANTS = [
     routines: [{ every_minutes: 30, prompt: '새 메일을 분류하고, 긴급하거나 답장이 필요한 메일이 있으면 초안과 함께 알려줘.' }] },
 ];
 
+const createAssistant = (t: (typeof ASSISTANTS)[number]) =>
+  act('createAssistant', t.name, { shape: Math.floor(Math.random() * SHAPE_COUNT), color: COLORS[Math.floor(Math.random() * COLORS.length)], label: t.description, systemPrompt: `${t.prompt}\n\n${ASSISTANT_RULES}` }, t.routines);
+
 async function createFromTemplate(t: (typeof ASSISTANTS)[number]) {
-  const id = await act('createAssistant', t.name, { shape: Math.floor(Math.random() * SHAPE_COUNT), color: COLORS[Math.floor(Math.random() * COLORS.length)], label: t.description, systemPrompt: `${t.prompt}\n\n${ASSISTANT_RULES}` }, t.routines);
+  const id = await createAssistant(t);
   if (id) { ui.tab = 'details'; select(id); }
 }
 
@@ -1317,6 +1348,7 @@ window.desktop.onState((state) => {
     }
   }
   S = state;
+  renderOnboarding(state);
   render(first);
 });
 
@@ -1327,6 +1359,11 @@ document.addEventListener('click', (e) => {
 });
 
 window.app = { select, getState: () => S };
+initOnboarding({
+  templates: ASSISTANTS,
+  createTeam: async (picked) => { for (const t of picked) await createAssistant(t as (typeof ASSISTANTS)[number]); },
+  select,
+});
 buildComposer();
 window.desktop.init();
 refreshUsage();

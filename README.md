@@ -169,6 +169,11 @@ The tools every Bot gets from the app, on top of the file, shell and web tools o
 | `cancel_routine` | Switches a routine off. |
 | `use_skill` | Loads a skill's full instructions. |
 | `propose_skill` | Proposes a new skill as a card; saved on your click. |
+| `set_status` | Shows what the Bot is doing under its avatar, e.g. "학회 정보 검색 중". |
+| `list_models` | Lists the models a new Bot can run on. |
+| `create_bot` / `update_bot` | Creates a Bot with a name, role, instructions and model, or changes them. |
+| `create_team` / `add_to_team` | Creates a team chat with the given Bots, or adds members. |
+| `message_team` | Posts to a team chat and returns the members' replies. |
 | `request_meeting_approval` | Asks whether to accept a meeting invite you did not request; your answer grants one calendar reply. |
 
 ## Security model
@@ -338,6 +343,10 @@ npm run build && npx electron . --remote-debugging-port=9333   # with DevTools o
 npm run typecheck
 npm test
 ```
+
+Running from source stores data in `~/Library/Application Support/CharacterBot Dev`; the installed app uses `CharacterBot`, so a fresh install starts at the first-run setup (account sign-in, name, starter team, first task).
+
+Optional cloud backup on Supabase: see [docs/supabase.md](docs/supabase.md).
 
 Every change needs `npm run build` (which `npm start` runs) and a restart. Pull requests and branches other than `main` run `.github/workflows/ci.yml`: typecheck, tests, the app build and the site build.
 

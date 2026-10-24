@@ -540,3 +540,57 @@ a.btn { color: var(--base); text-decoration: none; }
 .voice-chat.on { display: flex; align-items: center; gap: 10px; margin: 0 4px 8px; padding: 8px 12px; border: 1px solid var(--stroke); border-radius: 14px; background: var(--soft); font-size: 13.5px; }
 .voice-chat .meter-wrap { width: 90px; height: 6px; border-radius: 3px; background: var(--stroke); overflow: hidden; }
 .voice-chat .level { display: block; height: 100%; background: #3b82f6; transform-origin: left; transform: scaleX(.08); transition: transform .08s; }
+
+/* ---------- first-run setup ---------- */
+.onboarding { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; overflow-y: auto; padding: 48px 20px; background: radial-gradient(70% 60% at 50% 0%, color-mix(in srgb, var(--blue) 14%, transparent), transparent 70%), var(--pane); }
+.onboarding [hidden] { display: none !important; }
+.ob-drag { position: fixed; top: 0; left: 0; right: 0; height: 40px; -webkit-app-region: drag; }
+.ob-card { width: min(560px, 100%); display: grid; gap: 14px; animation: ob-in .35s cubic-bezier(.2, .8, .2, 1) both; }
+.ob-welcome, .ob-preparing { justify-items: center; text-align: center; }
+.ob-card h1 { margin: 6px 0 0; font-size: 34px; letter-spacing: -.02em; line-height: 1.15; }
+.ob-card h2 { margin: 0; font-size: 26px; letter-spacing: -.015em; }
+.ob-lede { margin: 0 0 6px; color: var(--muted); font-size: 15px; line-height: 1.55; }
+.ob-cast { display: flex; gap: 14px; margin-bottom: 8px; }
+.ob-cast .avatar:nth-child(even) { transform: translateY(8px); }
+.ob-dots { display: flex; gap: 6px; margin-bottom: 8px; }
+.ob-dots i { width: 22px; height: 4px; border-radius: 2px; background: var(--hover); }
+.ob-dots i.on { background: var(--base); }
+.ob-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.ob-welcome .ob-actions { justify-content: center; }
+.btn.big { padding: 10px 26px; font-size: 15px; }
+.ob-accounts { display: grid; gap: 10px; }
+.ob-account { border: 1px solid var(--stroke); border-radius: 14px; padding: 14px 16px; display: grid; gap: 12px; }
+.ob-row { display: flex; align-items: center; gap: 12px; }
+.ob-row .label { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.ob-row .label small { font-weight: 500; font-size: 11px; color: var(--muted); background: var(--hover); padding: 1px 7px; border-radius: 999px; }
+.ob-row .desc { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.ob-logo { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--hover); flex: none; overflow: hidden; }
+.ob-logo img { width: 24px; height: 24px; }
+.ob-btns { display: flex; gap: 6px; flex: none; }
+.ob-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; color: #1f9d55; flex: none; }
+.ob-key { display: flex; gap: 8px; }
+.ob-note { margin: 0; font-size: 13px; color: var(--muted); }
+.ob-note.ok { color: #1f9d55; font-weight: 600; }
+.ob-team { display: grid; gap: 8px; }
+.ob-pick { display: flex; align-items: center; gap: 12px; text-align: left; padding: 12px 14px; border: 1px solid var(--stroke); border-radius: 14px; background: none; width: 100%; }
+.ob-pick:hover:not(.fixed) { background: var(--soft); }
+.ob-pick.on { border-color: var(--base); }
+.ob-pick b { display: block; font-size: 14px; }
+.ob-pick span { font-size: 13px; color: var(--muted); }
+.ob-plus { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--hover); flex: none; }
+.ob-pick.on .ob-plus { background: var(--base); color: var(--pane); }
+.ob-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ob-chips .chip { cursor: pointer; }
+.ob-card textarea.field { resize: none; font: inherit; font-size: 15px; }
+@keyframes ob-in { from { opacity: 0; transform: translateY(10px); } }
+@media (prefers-reduced-motion: reduce) { .ob-card { animation: none; } }
+
+/* "메시지 보냄 (avatars) Bot 4개" and friends, centered like Grok Bot's event lines. */
+.team-line { align-self: center; display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); padding: 2px 8px; background: none; border-radius: 8px; }
+button.team-line:hover { background: var(--soft); }
+.team-line b { color: var(--base); font-weight: 500; }
+.av-stack { display: inline-flex; }
+.av-stack .avatar + .avatar { margin-left: -7px; }
+.activity-row .verb { color: var(--faint); background: linear-gradient(90deg, var(--faint) 40%, var(--base) 50%, var(--faint) 60%) 0 0 / 300% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: verb-shine 2s linear infinite; }
+@keyframes verb-shine { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .activity-row .verb { animation: none; -webkit-text-fill-color: currentColor; } }

@@ -39,6 +39,10 @@ interface SecretStore {
 type Tag = { threadOf?: string; viaBotId?: string };
 type ApprovalDone = (decision: 'allow' | 'deny' | 'always', args?: Record<string, unknown>) => void;
 
+// `npm start` keeps its data apart from the installed app, so a fresh install
+// starts at first-run setup instead of showing development chats.
+if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'CharacterBot Dev'));
+
 // Takes effect on the next launch (settings › 일반 › 시스템).
 if (store.load(path.join(app.getPath('userData'), 'state.json')).settings.hardwareAcceleration === false) app.disableHardwareAcceleration();
 
@@ -269,7 +273,8 @@ function systemPrompt(bot: Bot, conv: Conv): string {
     const folders = conv.botIds.map(findBot).filter(isBot).filter((b) => b.id !== bot.id).map((b) => `- ${b.name}: ${workspace(b.id)}`);
     if (folders.length) parts.push(`다른 멤버의 작업 폴더(읽기 가능, 파일을 주고받을 때 경로를 알려 주세요):\n${folders.join('\n')}`);
   }
-  parts.push('현재 작업 폴더가 당신의 컴퓨터입니다. 만든 파일은 이 폴더에 저장하면 사용자의 라이브러리에 표시됩니다. 사용자에게 결정을 물을 때는 mcp__characterbot__ask_user를, 오래 기억할 사실은 mcp__characterbot__remember를, 반복 작업 요청은 mcp__characterbot__schedule_routine을 쓰세요. 다른 Bot에게 일을 맡기거나 물어볼 때는 mcp__characterbot__message_bot을, 사용자가 요청하지 않은 회의 초대를 발견하면 mcp__characterbot__request_meeting_approval을 쓰세요.');
+  parts.push('일을 시작하거나 새 단계로 넘어갈 때마다 mcp__characterbot__set_status로 지금 하는 일을 "학회 정보 / 검색 중"처럼 짧게 알리세요. 먼저 무엇을 할지 한두 문장으로 말한 뒤 작업하세요. 최신 정보가 필요하면 웹 검색을 쓰세요.');
+  parts.push('현재 작업 폴더가 당신의 컴퓨터입니다. 만든 파일은 이 폴더에 저장하면 사용자의 라이브러리에 표시됩니다. 사용자에게 결정을 물을 때는 mcp__characterbot__ask_user를, 오래 기억할 사실은 mcp__characterbot__remember를, 반복 작업 요청은 mcp__characterbot__schedule_routine을 쓰세요. 다른 Bot에게 일을 맡기거나 물어볼 때는 mcp__characterbot__message_bot을, 사용자가 Bot이나 팀을 만들어 달라고 하면 mcp__characterbot__create_bot·create_team으로 직접 만들고(모델을 골라야 하면 list_models, 기존 Bot의 모델·지침 변경은 update_bot), 팀 전체에 일을 맡길 때는 mcp__characterbot__message_team을, 사용자가 요청하지 않은 회의 초대를 발견하면 mcp__characterbot__request_meeting_approval을 쓰세요.');
   const team = state.bots.filter((b) => b.id !== bot.id);
   if (bot.id === mainBot()?.id && team.length) {
     const role = (b: Bot) => (b.label || b.systemPrompt.split('\n')[0]).slice(0, 160);
@@ -421,6 +426,27 @@ async function botTurn(conv: Conv, bot: Bot, initiator: Initiator, signal: Abort
     createRoutine: (args) => createRoutine(conv, bot, args),
     webhookUrl: triggers.webhookUrl,
     cancelRoutine: (id) => { const r = state.routines.find((x) => x.id === id && x.convId === conv.id); if (r) r.enabled = false; },
+    models: () => [...models, ...openaiModels],
+    createBot: (args) => createBotFor(args),
+    updateBot: (args) => updateBotFor(args),
+    createTeam: (name, names) => {
+      if (state.convs.some((c) => c.kind === 'group' && c.name === name.trim())) throw new Error(`"${name}" 팀이 이미 있어요`);
+      const members = [bot, ...botsNamed(names)].filter((b, i, all) => all.indexOf(b) === i);
+      const team = findConv(actions.createGroup(name.trim(), members.map((b) => b.id)));
+      broadcast();
+      return `"${team.name}" 팀을 만들었어요. 팀원: ${members.map((b) => b.name).join(', ')}`;
+    },
+    addToTeam: (name, names) => {
+      const team = teamNamed(name);
+      for (const b of botsNamed(names)) if (!team.botIds.includes(b.id)) team.botIds.push(b.id);
+      broadcast();
+      return `"${team.name}" 팀원: ${team.botIds.map((id) => findBot(id)?.name).filter(Boolean).join(', ')}`;
+    },
+    messageTeam: (name, message, mention) => messageTeam(bot, teamNamed(name), message, mention || [], initiator, conv),
+    setStatus: (subject, verb) => {
+      const a = runtime.active[conv.id];
+      if (a?.botId === bot.id) { a.status = { subject: subject.slice(0, 40), verb: verb.slice(0, 20) }; broadcast(); }
+    },
   };
 
   const setPhase = (phase: ActiveRun['phase']) => { if (runtime.active[conv.id]?.botId === bot.id) runtime.active[conv.id].phase = phase; };
@@ -724,6 +750,73 @@ async function messageBot(from: Bot, name: string, text: string, initiator: Init
   }
   const reply = dm.messages.slice(start).filter((m) => m.role === 'assistant' && (m.content || m.error)).map((m) => m.content || `오류: ${m.error}`).join('\n\n');
   return reply || `${target.name}이(가) 답하지 않았어요`;
+}
+
+// Bots and teams made by a bot (create_bot / create_team), like Grok Bot's
+// "make me a reviewer team". Names are matched case-insensitively.
+const byName = (name: string) => (b: Bot) => b.name.toLowerCase() === name.trim().replace(/^@/, '').toLowerCase();
+function botsNamed(names: string[]): Bot[] {
+  return names.map((n) => {
+    const b = state.bots.find(byName(n));
+    if (!b) throw new Error(`"${n}" Bot이 없어요. 먼저 create_bot으로 만드세요. 있는 Bot: ${state.bots.map((x) => x.name).join(', ')}`);
+    return b;
+  });
+}
+function teamNamed(name: string): Conv {
+  const teams = state.convs.filter((c) => c.kind === 'group');
+  const team = teams.find((c) => c.name.toLowerCase() === name.trim().toLowerCase());
+  if (!team) throw new Error(`"${name}" 팀이 없어요. 있는 팀: ${teams.map((c) => c.name).join(', ') || '없음'}`);
+  return team;
+}
+function createBotFor({ name, role, instructions, model }: { name: string; role: string; instructions?: string; model?: string }): Bot {
+  if (!name.trim()) throw new Error('이름이 필요해요');
+  if (state.bots.some(byName(name))) throw new Error(`"${name}" Bot이 이미 있어요`);
+  const known = [...models, ...openaiModels];
+  if (model && !known.some((m) => m.value === model)) throw new Error(`모르는 모델이에요. list_models의 value 중에서 고르세요`);
+  const bot = getBot(findConv(actions.createBot(name.trim())).botIds[0]);
+  Object.assign(bot, {
+    label: role.trim().slice(0, 80),
+    model: model || '',
+    systemPrompt: `${instructions?.trim() || `당신은 ${name}입니다. 역할: ${role}`}\n\n사용자의 언어로 답하세요.`,
+  });
+  broadcast();
+  return bot;
+}
+
+function updateBotFor({ name, role, instructions, model }: { name: string; role?: string; instructions?: string; model?: string }): Bot {
+  const [bot] = botsNamed([name]);
+  if (model !== undefined && model && ![...models, ...openaiModels].some((m) => m.value === model)) throw new Error(`모르는 모델이에요. list_models의 value 중에서 고르세요`);
+  if (role?.trim()) bot.label = role.trim().slice(0, 80);
+  if (instructions?.trim()) bot.systemPrompt = `${instructions.trim()}\n\n사용자의 언어로 답하세요.`;
+  if (model !== undefined) bot.model = model;
+  broadcast();
+  return bot;
+}
+
+// A bot posts to a team chat (message_team); the mentioned members, or all of
+// them, answer there and their replies come back as the tool result.
+async function messageTeam(from: Bot, team: Conv, text: string, mention: string[], initiator: Initiator, fromConv: Conv): Promise<string> {
+  if (initiator === 'bot') throw new Error('다른 Bot이 맡긴 일을 하는 중에는 팀에 보낼 수 없어요');
+  const members = team.botIds.filter((id) => id !== from.id);
+  const targets = mention.length ? botsNamed(mention).map((b) => b.id).filter((id) => members.includes(id)) : members;
+  if (!targets.length) throw new Error(`"${team.name}" 팀에 답할 Bot이 없어요`);
+  for (const until = Date.now() + 600_000; runtime.running.has(team.id);) {
+    if (Date.now() > until) throw new Error(`"${team.name}" 팀이 계속 다른 일을 하고 있어요`);
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  const start = team.messages.length;
+  const active = runtime.active[fromConv.id];
+  if (active) active.delegates = [...(active.delegates || []), ...targets];
+  team.messages.push({ id: store.id('msg'), role: 'user', ts: Date.now(), content: text, fromBotId: from.id });
+  touch(team);
+  try {
+    await respond(team, targets, 'bot');
+  } finally {
+    if (active) active.delegates = (active.delegates || []).filter((id) => !targets.includes(id));
+    broadcast();
+  }
+  const replies = team.messages.slice(start).filter((m) => m.role === 'assistant' && (m.content || m.error));
+  return replies.map((m) => `[${findBot(m.botId)?.name}] ${m.content || `오류: ${m.error}`}`).join('\n\n') || '팀에서 아무도 답하지 않았어요';
 }
 
 // ---------- routines ----------
@@ -1071,6 +1164,21 @@ const actions = {
     state.settings.chatgpt = true;
     openaiModels = imagegen.models(codexHome());
     return true;
+  },
+  // ChatGPT bots on an OpenAI API key instead of a subscription.
+  async connectChatgptKey(key: string) {
+    if (!/^sk-[\w-]{20,}$/.test(key.trim())) throw new Error('OpenAI API 키 형식이 아닙니다 (sk-로 시작)');
+    chatgptStatus = await imagegen.loginWithKey(key.trim());
+    if (!chatgptStatus.loggedIn) throw new Error('OpenAI API 키로 로그인하지 못했습니다');
+    state.settings.chatgpt = true;
+    openaiModels = imagegen.models(codexHome());
+    return true;
+  },
+  // First-run setup is done; bots run on ChatGPT when Claude isn't connected.
+  finishOnboarding() {
+    const claudeReady = claudeStatus?.loggedIn || state.settings.providers.some((p) => p.kind !== 'claude' && providerKey(readSecrets(), p.id));
+    if (!claudeReady && openaiModels[0]) for (const bot of state.bots) if (!bot.model) bot.model = openaiModels[0].value;
+    state.settings.onboarded = true;
   },
   async logoutChatgpt() {
     await imagegen.logout();

@@ -26,6 +26,8 @@ assert.equal(migrated.bots[0].id, 'a1');
 assert.equal(migrated.convs[0].messages[1].botId, 'a1');
 assert.deepEqual(migrated.bots[0].memories, []);
 assert.equal(migrated.settings.model, '');
+assert.equal(migrated.settings.onboarded, true); // saved before first-run setup existed
+assert.equal(store.defaultState().settings.onboarded, false);
 assert.equal((migrated.settings as unknown as Record<string, unknown>).baseUrl, undefined);
 
 // gateway: deny beats allow, defaults, workspace writes, routine fails closed, broken regex never widens

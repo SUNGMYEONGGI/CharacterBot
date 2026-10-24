@@ -44,6 +44,7 @@ function defaultState(): State {
       computerAccess: 'allow',
       fullAccess: true,
       blockAccountWrites: true,
+      onboarded: false,
     },
     bots: [bot],
     sections: [],
@@ -66,6 +67,8 @@ function migrate(raw: any): State {
   const state = { ...defaults, ...raw, settings: { ...defaults.settings, ...raw.settings }, usage: { ...defaults.usage, ...raw.usage } };
   delete state.settings.baseUrl;
   delete state.settings.auth;
+  // Installs from before first-run setup existed are already set up.
+  if (raw.settings && raw.settings.onboarded === undefined) state.settings.onboarded = true;
   // Full permissions became the default; move older installs over once.
   if (!raw.settings?.fullAccess && raw.settings) Object.assign(state.settings, { computerAccess: 'allow', fullAccess: true });
   if (raw.agents && !raw.bots) {

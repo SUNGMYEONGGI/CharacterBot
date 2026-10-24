@@ -230,6 +230,7 @@ export interface Settings {
   computerAccess: Effect;
   fullAccess: boolean;
   blockAccountWrites: boolean;
+  onboarded: boolean; // first-run setup (accounts, name, team) finished
   mainBotId?: string;
 }
 
@@ -271,6 +272,7 @@ export interface ActiveRun {
   delegates?: string[];
   threadOf?: string;
   viaBotId?: string;
+  status?: { subject: string; verb: string }; // set_status: "학회 정보 검색 중"
 }
 
 export interface RunRecord {

@@ -38,6 +38,7 @@ function run(args: string[], timeout: number): Promise<string> {
 // { loggedIn, email, plan } for this computer's Codex (ChatGPT) login.
 async function status(): Promise<LoginStatus> {
   const out = await run(['login', 'status'], 20_000).catch(() => '');
+  if (/API key/i.test(out)) return { loggedIn: true, email: '', plan: 'API' };
   if (!/ChatGPT/.test(out)) return { loggedIn: false };
   try {
     const { tokens } = JSON.parse(fs.readFileSync(path.join(codexHome(), 'auth.json'), 'utf8'));
@@ -53,6 +54,18 @@ async function status(): Promise<LoginStatus> {
 async function login() {
   await run(['login'], 10 * 60_000);
   return status();
+}
+
+// Signs Codex in with an OpenAI API key (read from stdin, never put in argv).
+function loginWithKey(key: string): Promise<LoginStatus> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(codexBin(), ['login', '--with-api-key'], { stdio: ['pipe', 'ignore', 'pipe'] });
+    let err = '';
+    child.stderr.on('data', (d) => { err += d; });
+    child.on('error', reject);
+    child.on('close', (code) => (code === 0 ? status().then(resolve, reject) : reject(new Error(err.trim().split('\n').pop() || `codex login 실패 (${code})`))));
+    child.stdin.end(key);
+  });
 }
 
 const logout = () => run(['logout'], 20_000);
@@ -210,4 +223,4 @@ function usage(home: string): Promise<ChatgptUsage> {
   });
 }
 
-export { status, login, logout, generate, models, runTurn, usage };
+export { status, login, loginWithKey, logout, generate, models, runTurn, usage };
