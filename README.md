@@ -64,9 +64,19 @@ Both engines see the same app tools (`ask_user`, `remember`, `message_bot`, ...)
 
 ### From a release
 
+The quickest way installs the latest release into Applications and opens it:
+
+```sh
+curl -fsSL https://sungmyeonggi.github.io/CharacterBot/install.sh | sh
+```
+
+Files downloaded with `curl` carry no quarantine flag, so macOS doesn't show the "Apple could not verify CharacterBot" warning. The script is [`site/install.sh`](site/install.sh).
+
+To install by hand instead:
+
 1. Download [`CharacterBot-arm64.dmg`](https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest/download/CharacterBot-arm64.dmg), the latest release (or pick one from [Releases](https://github.com/SUNGMYEONGGI/CharacterBot/releases)).
 2. Drag **CharacterBot** to Applications.
-3. Builds without a Developer ID signature are ad-hoc signed, so Gatekeeper stops the first launch. Right-click the app › **Open**, or run:
+3. Builds without a Developer ID signature are ad-hoc signed, so Gatekeeper stops the first launch. Open System Settings › **Privacy & Security** and click **Open Anyway**, or run:
 
    ```sh
    xattr -dr com.apple.quarantine /Applications/CharacterBot.app
