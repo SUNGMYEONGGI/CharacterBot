@@ -1,33 +1,54 @@
-import { openSettings, renderSettings, planUsage, refreshUsage, confirmLogout, SETTINGS_TABS } from './settings.js';
-import { openApps, renderApps, serverTile } from './apps.js';
+import type { FileEntry } from '../main/tools';
+import type { ActiveRun, Approval, Bot, Broadcast, Conv, MeetingCard, Message, QuestionCard, Routine, Section, Skill, SkillCard, StreamChunk } from '../shared/types';
+import { openSettings, renderSettings, planUsage, refreshUsage, confirmLogout, SETTINGS_TABS } from './settings';
+import { openApps, renderApps, serverTile } from './apps';
 import {
   h, fill, $, act, icon, avatar, avatarSvg, userAvatar, editing, toast, openModal, closeModal, modalOpen,
   toggle, popover, relativeDay, shapeOf, SHAPE_COUNT, modelName, modelOptions, setAvatarState,
-} from './ui.js';
-import { md, renderDiagrams, openViewer, voiceBubble, toWav16k, blobToDataUrl, clock, parseCsv } from './rich.js';
+  type Child, type MenuItem,
+} from './ui';
+import { md, renderDiagrams, openViewer, voiceBubble, toWav16k, blobToDataUrl, clock, parseCsv } from './rich';
 
-let S = null; // latest state snapshot from the main process
-const ui = { convId: null, tab: 'details', attachments: [], skillId: null, panelOpen: true, history: { list: [], index: -1 }, threadId: null, bundles: new Set() };
+let S: Broadcast; // latest state snapshot from the main process
+const ui: {
+  convId: string | null;
+  tab: string;
+  attachments: { name: string; dataUrl?: string; text?: string }[];
+  skillId: string | null;
+  panelOpen: boolean;
+  history: { list: string[]; index: number };
+  threadId: string | null;
+  bundles: Set<string>;
+  keepUnread?: string | null;
+  suggest?: { list: Suggestion[]; index: number; el: HTMLTextAreaElement } | null;
+  threadEls?: { rootId: string; ta: HTMLTextAreaElement; list: HTMLElement; view?: HTMLElement } | null;
+  voiceBusy?: boolean;
+  tasksBody?: HTMLElement | null;
+} = { convId: null, tab: 'details', attachments: [], skillId: null, panelOpen: true, history: { list: [], index: -1 }, threadId: null, bundles: new Set() };
+
+type Suggestion = { label: string; apply: () => void; icon?: string; hint?: string; bot?: Bot; tile?: HTMLElement; status?: string; kind?: string };
 
 const COLORS = ['#111111', '#a0673b', '#ef3b4b', '#f26a1b', '#f7931a', '#20b15a', '#15b8a6', '#2f7cf6', '#8b5cf6', '#ec4899', '#8e8e8e'];
-const botById = (id) => S.bots.find((b) => b.id === id);
+const botById = (id: string | undefined) => S.bots.find((b) => b.id === id);
 const conv = () => S.convs.find((c) => c.id === ui.convId);
-const isRunning = (id) => S.runtime.running.includes(id);
-const convTitle = (c) => (c.kind === 'dm' ? botById(c.botIds[0])?.name || 'Bot' : c.name);
-const shortTool = (name) => name.replace(/^mcp__grokbot__/, '').replace(/^mcp__([^_]+)__/, '$1 · ');
+// The chat views only render while a conversation is selected.
+const currentConv = () => conv() as Conv;
+const isRunning = (id: string | null | undefined) => Boolean(id && S.runtime.running.includes(id));
+const convTitle = (c: Conv) => (c.kind === 'dm' ? botById(c.botIds[0])?.name || 'Bot' : c.name);
+const shortTool = (name: string) => name.replace(/^mcp__grokbot__/, '').replace(/^mcp__([^_]+)__/, '$1 · ');
 
-const isMain = (id) => id === (S.settings.mainBotId && botById(S.settings.mainBotId) ? S.settings.mainBotId : S.bots[0]?.id);
+const isMain = (id: string | undefined) => id === (S.settings.mainBotId && botById(S.settings.mainBotId) ? S.settings.mainBotId : S.bots[0]?.id);
 // A ★ on the main bot's avatar, as in Grok Bot's sidebar.
-const withStar = (el, botId, size) => (isMain(botId) ? h('span', { class: 'main-star-wrap', style: `width:${size}px;height:${size}px` }, el, h('span', { class: 'main-star', title: '메인 Bot' }, '★')) : el);
+const withStar = (el: HTMLElement, botId: string, size: number) => (isMain(botId) ? h('span', { class: 'main-star-wrap', style: `width:${size}px;height:${size}px` }, el, h('span', { class: 'main-star', title: '메인 Bot' }, '★')) : el);
 
-function convAvatar(c, size) {
+function convAvatar(c: Conv, size: number): HTMLElement {
   if (c.kind === 'dm') return withStar(avatar(botById(c.botIds[0]), size), c.botIds[0], size);
   const small = Math.round(size * 0.56);
-  const members = c.botIds.map(botById).filter(Boolean).slice(0, 3);
+  const members = c.botIds.map(botById).filter((b): b is Bot => Boolean(b)).slice(0, 3);
   return h('div', { class: 'cluster', style: `width:${size}px;height:${size}px` }, userAvatar(S.settings.userName, small), members.map((b) => avatar(b, small)));
 }
 
-function preview(c) {
+function preview(c: Conv): string {
   const last = [...c.messages].reverse().find((m) => (m.role === 'user' || m.role === 'assistant') && m.content && !m.threadOf);
   if (!last) return '새 대화';
   const who = last.role === 'assistant' && c.kind === 'group' ? `[${botById(last.botId)?.name?.split(' ')[0] || ''}] ` : '';
@@ -39,7 +60,7 @@ function preview(c) {
 function renderSidebar() {
   const el = $('#sidebar');
   if (editing(el)) return renderConvList();
-  const plus = h('button', { class: 'circle-btn', title: '새로 만들기', onclick: () => popover(plus, [
+  const plus: HTMLElement = h('button', { class: 'circle-btn', title: '새로 만들기', onclick: () => popover(plus, [
     { icon: 'message', label: '새 메시지', onclick: openNewMessage },
     { icon: 'plus', label: '새 Bot 만들기', onclick: openNewBot },
     { icon: 'sparkle', label: 'AI 비서 템플릿', chevron: true, onclick: () => popover(plus, ASSISTANTS.map((t) => ({ label: t.name, hint: t.description, onclick: () => createFromTemplate(t) }))) },
@@ -51,7 +72,7 @@ function renderSidebar() {
   ]) }, icon('plus', 20));
   const busy = S.runtime.running.length + S.runtime.pending.length;
   const tasks = h('button', { class: 'circle-btn tasks-btn', title: '백그라운드 작업', onclick: openTasks }, icon('clock', 19), busy ? h('span', { class: 'count' }, busy) : null);
-  const chip = h('button', { class: 'user-chip', onclick: () => openUserMenu(chip) }, userAvatar(S.settings.userName, 36), h('span', { class: 'ellipsis' }, S.settings.userName));
+  const chip: HTMLElement = h('button', { class: 'user-chip', onclick: () => openUserMenu(chip) }, userAvatar(S.settings.userName, 36), h('span', { class: 'ellipsis' }, S.settings.userName));
   fill(el,
     h('div', { class: 'side-top' },
       h('button', { class: 'circle-btn', title: '검색 (⌘K)', onclick: () => openPalette() }, icon('search', 19)),
@@ -64,7 +85,7 @@ function renderSidebar() {
 
 // Same items as Grok Bot's account menu, minus what this app doesn't have
 // (mobile app). Plan row: Claude plan and its weekly use.
-function openUserMenu(anchor) {
+function openUserMenu(anchor: Element): void {
   const u = planUsage();
   const pct = u?.available && u.sevenDay ? `${Math.round(u.sevenDay.utilization ?? 0)}% 사용` : '';
   const plan = u?.plan || S.claude?.plan;
@@ -79,32 +100,32 @@ function openUserMenu(anchor) {
     '-',
     { icon: 'userPlus', label: '계정 추가', onclick: () => openSettings('general') },
     S.claude?.loggedIn ? { icon: 'logout', label: '로그아웃', onclick: confirmLogout } : null,
-  ].filter(Boolean), { place: 'above' });
+  ], { place: 'above' });
 }
 
 // While a bot works, its chat shows three pulsing dots in the bot's color (as in Grok Bot).
-const typingDots = (bot, size) => h('span', { class: 'typing-dots', style: `width:${size}px;height:${size}px;--dot:${bot?.color || '#999'};--t0:-${Date.now() % 1200}ms` }, h('i'), h('i'), h('i'));
+const typingDots = (bot: Bot | undefined, size: number) => h('span', { class: 'typing-dots', style: `width:${size}px;height:${size}px;--dot:${bot?.color || '#999'};--t0:-${Date.now() % 1200}ms` }, h('i'), h('i'), h('i'));
 
 function renderConvList() {
   // Pinned first, then most recent; hidden chats come back when a bot writes.
   // Chats in a section sit under its (collapsible) header, after the loose ones.
   const list = S.convs.filter((c) => !c.hidden || c.id === ui.convId).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.updatedAt - a.updatedAt);
   const sections = S.sections || [];
-  const inSection = (c) => sections.some((x) => x.id === c.sectionId);
+  const inSection = (c: Conv) => sections.some((x) => x.id === c.sectionId);
   fill($('#sidebar .conv-list'),
     ...list.filter((c) => !inSection(c)).map(convRow),
     ...sections.flatMap((sec) => {
       const items = list.filter((c) => c.sectionId === sec.id);
       return [
         h('button', { class: 'section-head', onclick: () => act('updateSection', sec.id, { collapsed: !sec.collapsed }),
-          oncontextmenu: (e) => { e.preventDefault(); sectionMenu(e.currentTarget, sec); } },
+          oncontextmenu: (e) => { e.preventDefault(); sectionMenu(e.currentTarget as Element, sec); } },
         h('span', { class: `chev${sec.collapsed ? '' : ' open'}` }, icon('chevron', 12)), h('span', { class: 'grow ellipsis' }, sec.name), h('span', { class: 'muted small' }, items.length || '')),
         ...(sec.collapsed ? [] : items.map(convRow)),
       ];
     }));
 }
 
-function sectionMenu(anchor, sec) {
+function sectionMenu(anchor: Element, sec: Section): void {
   popover(anchor, [
     { icon: 'pencil', label: '섹션 이름 변경', onclick: () => askName('섹션 이름 변경', sec.name, (v) => act('updateSection', sec.id, { name: v })) },
     { icon: 'trash', label: '섹션 삭제', class: 'danger', onclick: () => act('deleteSection', sec.id) },
@@ -112,7 +133,7 @@ function sectionMenu(anchor, sec) {
 }
 
 // Small "name it" dialog (rename bot / group / section, new section).
-function askName(title, value, onSave) {
+function askName(title: string, value: string, onSave: (v: string) => void): void {
   const input = h('input', { class: 'field', value });
   const save = () => { const v = input.value.trim(); if (v) onSave(v); closeModal(); };
   input.onkeydown = (e) => { if (e.key === 'Enter' && !e.isComposing) save(); };
@@ -121,9 +142,9 @@ function askName(title, value, onSave) {
   input.select();
 }
 
-function convRow(c) {
+function convRow(c: Conv): HTMLElement {
   return h('button', { class: `conv${c.id === ui.convId ? ' active' : ''}${c.unread && c.id !== ui.convId ? ' unread' : ''}`, onclick: () => select(c.id),
-    oncontextmenu: (e) => { e.preventDefault(); convMenu(e.currentTarget, c); } },
+    oncontextmenu: (e) => { e.preventDefault(); convMenu(e.currentTarget as Element, c); } },
     isRunning(c.id) ? typingDots(botById(S.runtime.active?.[c.id]?.botId) || botById(c.botIds[0]), 38) : convAvatar(c, 38),
     h('div', { class: 'grow' },
       h('div', { class: 'row' }, h('div', { class: 'name ellipsis grow' }, convTitle(c)), c.pinned ? h('span', { class: 'pin-mark' }, icon('pin', 13)) : null, c.unread && c.id !== ui.convId ? h('span', { class: 'unread-dot' }) : null),
@@ -132,7 +153,7 @@ function convRow(c) {
 }
 
 // Right-click menu on a sidebar chat (Grok Bot's, minus sections and ID copy).
-function convMenu(anchor, c) {
+function convMenu(anchor: Element, c: Conv): void {
   const bot = c.kind === 'dm' ? botById(c.botIds[0]) : null;
   const rename = () => askName(bot ? 'Bot 이름 변경' : '그룹 이름 변경', bot ? bot.name : convTitle(c), (v) => act(bot ? 'updateBot' : 'updateConv', bot ? bot.id : c.id, { name: v }));
   const sections = (S.sections || []).filter((x) => x.id !== c.sectionId);
@@ -145,7 +166,7 @@ function convMenu(anchor, c) {
     { icon: 'pin', label: c.pinned ? '고정 해제' : '고정', onclick: () => act('updateConv', c.id, { pinned: !c.pinned }) },
     { icon: 'folder', label: '새 섹션으로 이동', onclick: () => askName('새 섹션', '', (v) => act('createSection', v, c.id)) },
     ...sections.map((x) => ({ icon: 'folder', label: `${x.name}(으)로 이동`, onclick: () => act('updateConv', c.id, { sectionId: x.id }) })),
-    c.sectionId ? { icon: 'close', label: '섹션에서 빼기', onclick: () => act('updateConv', c.id, { sectionId: null }) } : null,
+    c.sectionId ? { icon: 'close', label: '섹션에서 빼기', onclick: () => act('updateConv', c.id, { sectionId: undefined }) } : null,
     { icon: 'bell', label: c.unread ? '읽음으로 표시' : '읽지 않음으로 표시', onclick: () => { if (c.id === ui.convId && !c.unread) ui.keepUnread = c.id; act('updateConv', c.id, { unread: !c.unread }); } },
     '-',
     { icon: 'pencil', label: bot ? 'Bot 이름 변경' : '그룹 이름 변경', onclick: rename },
@@ -153,19 +174,19 @@ function convMenu(anchor, c) {
     '-',
     { icon: 'eyeOff', label: '사이드바에서 숨기기', onclick: () => { act('updateConv', c.id, { hidden: true }); if (c.id === ui.convId) select(recentConvs().find((x) => x.id !== c.id && !x.hidden)?.id); } },
     { icon: 'trash', label: '삭제', class: 'danger', onclick: remove },
-  ].filter(Boolean));
+  ]);
 }
 const recentConvs = () => [...S.convs].sort((a, b) => b.updatedAt - a.updatedAt);
 
 // ---------- thread ----------
 
-function stepLabel(m) {
-  const a = m.args || {};
+function stepLabel(m: Message): string {
+  const a = (m.args || {}) as Record<string, unknown>;
   const detail = a.command || a.file_path || a.path || a.url || a.query || a.pattern || a.name || a.text || a.question || a.prompt || a.description || '';
-  return `${shortTool(m.name)}${detail ? ` · ${String(detail).split('\n')[0].slice(0, 90)}` : ''}`;
+  return `${shortTool(m.name || '')}${detail ? ` · ${String(detail).split('\n')[0].slice(0, 90)}` : ''}`;
 }
 
-function questionCard(c, m) {
+function questionCard(c: Conv, m: Message & { card: QuestionCard }): HTMLElement {
   const { question, options, answer } = m.card;
   // Once answered, only the chosen option stays, its key in the bot's color (as in Grok Bot).
   return h('div', { class: 'card question', style: `--bot:${botById(m.botId)?.color || 'var(--base)'}` }, h('div', { class: 'q' }, question),
@@ -176,7 +197,7 @@ function questionCard(c, m) {
     }, h('span', { class: 'key' }, String.fromCharCode(65 + i)), opt))));
 }
 
-function skillCard(c, m) {
+function skillCard(c: Conv, m: Message & { card: SkillCard }): HTMLElement {
   const { name, description, body, saved } = m.card;
   return h('div', { class: 'card' },
     h('h4', {}, `새 스킬: ${name}`),
@@ -188,20 +209,21 @@ function skillCard(c, m) {
 // Approvals. Writes to an external app arrive as an editable draft (as in Grok
 // Bot); anything else is a plain allow/deny question. Cards are cached so edits
 // survive re-renders.
-const approvalEls = new Map(); // approval id -> card
-const appOf = (tool) => tool.match(/^mcp__(.+?)__(.+)$/);
-const appLabel = (server) => server.replace(/^claude_ai_/, '').replace(/_/g, ' ');
+const approvalEls = new Map<string, HTMLElement>(); // approval id -> card
+const appOf = (tool: string) => tool.match(/^mcp__(.+?)__(.+)$/);
+const appLabel = (server: string) => server.replace(/^claude_ai_/, '').replace(/_/g, ' ');
 
-function approvalCard(p) {
-  if (approvalEls.has(p.id)) return approvalEls.get(p.id);
+function approvalCard(p: Approval): HTMLElement {
+  const cached = approvalEls.get(p.id);
+  if (cached) return cached;
   const bot = botById(p.botId);
   const parts = appOf(p.tool);
-  let card;
+  let card: HTMLElement;
   if (!parts || parts[1] === 'grokbot') {
     card = h('div', { class: 'card' },
       h('h4', {}, `${bot?.name}이(가) 이 작업을 하도록 허용할까요?`),
       h('div', { class: 'muted small', style: 'margin:-4px 2px 10px' }, shortTool(p.tool)),
-      h('pre', {}, p.args.command || JSON.stringify(p.args, null, 2)),
+      h('pre', {}, typeof p.args.command === 'string' ? p.args.command : JSON.stringify(p.args, null, 2)),
       h('div', { class: 'btns' },
         h('button', { class: 'btn primary', onclick: () => act('resolveApproval', p.id, 'allow') }, '한 번만 허용'),
         h('button', { class: 'btn', onclick: () => act('resolveApproval', p.id, 'always') }, '항상 허용'),
@@ -216,10 +238,10 @@ function approvalCard(p) {
       if (!plain) input.dataset.json = '1';
       return h('label', { class: 'draft-field' }, h('span', { class: 'muted small' }, key), input);
     });
-    const send = (decision) => {
-      const args = {};
+    const send = (decision: 'allow' | 'always') => {
+      const args: Record<string, unknown> = {};
       try {
-        for (const el of card.querySelectorAll('[data-key]')) args[el.dataset.key] = el.dataset.json ? JSON.parse(el.value) : el.value;
+        for (const el of card.querySelectorAll<HTMLInputElement>('[data-key]')) args[el.dataset.key || ''] = el.dataset.json ? JSON.parse(el.value) : el.value;
       } catch {
         return toast('JSON 형식이 올바르지 않아요');
       }
@@ -228,7 +250,7 @@ function approvalCard(p) {
     card = h('div', { class: 'card draft' },
       h('div', { class: 'draft-head row' }, avatar(bot, 22),
         h('span', { class: 'grow ellipsis' }, h('b', {}, '초안'), h('span', { class: 'muted' }, ` · ${appLabel(parts[1])} · ${parts[2]}`)),
-        h('button', { class: 'circle-btn small', title: '초안 메뉴', onclick: (e) => popover(e.currentTarget, [
+        h('button', { class: 'circle-btn small', title: '초안 메뉴', onclick: (e) => popover(e.currentTarget as Element, [
           { icon: 'close', label: '이 Bot의 초안 끄기', onclick: () => { act('updateBot', p.botId, { drafts: false }); send('allow'); } },
         ]) }, icon('more', 16))),
       fields,
@@ -242,11 +264,11 @@ function approvalCard(p) {
 }
 
 // An unrequested meeting invite the bot found: accept / decline / decide later.
-function meetingCard(c, m) {
+function meetingCard(c: Conv, m: Message & { card: MeetingCard }): HTMLElement {
   const bot = botById(m.botId);
   const { title, start, end, organizer, location, answer } = m.card;
-  const done = { accept: '수락함', decline: '거절함', later: '나중에 정하기로 함' }[answer];
-  const choose = (choice) => act('answerMeeting', c.id, m.id, choice);
+  const done = answer ? ({ accept: '수락함', decline: '거절함', later: '나중에 정하기로 함' } as Record<string, string>)[answer] : null;
+  const choose = (choice: 'accept' | 'decline' | 'later') => act('answerMeeting', c.id, m.id, choice);
   return h('div', { class: 'card meeting' },
     h('div', { class: 'draft-head row' }, avatar(bot, 22), h('span', { class: 'grow' }, `${bot?.name}이(가) 회의 참여를 요청합니다`)),
     h('div', { class: 'meeting-body row' }, h('span', { class: 'meeting-icon' }, icon('calendar', 20)),
@@ -262,47 +284,50 @@ function meetingCard(c, m) {
 }
 
 // "Slack(으)로 보냄 — “…”" under an approved draft, as in Grok Bot.
-function sentLine(m) {
-  const parts = appOf(m.name);
-  const a = m.args || {};
+function sentLine(m: Message): HTMLElement {
+  const parts = appOf(m.name || '') || ['', '', ''];
+  const a = (m.args || {}) as Record<string, unknown>;
   const gist = String(a.text || a.message || a.body || a.content || a.title || a.subject || a.summary || '').replace(/\s+/g, ' ').slice(0, 80);
   if (m.content.startsWith('Error')) return h('div', { class: 'sent-line danger' }, `${appLabel(parts[1])}에 보내지 못했어요`);
   return h('div', { class: 'sent-line' }, icon('check', 14), m.content ? `${appLabel(parts[1])}(으)로 보냄${gist ? ` — “${gist}”` : ''}` : '보내는 중…');
 }
 
-function toolItem(c, m) {
-  if (m.card?.type === 'question') return questionCard(c, m);
-  if (m.card?.type === 'skill') return skillCard(c, m);
-  if (m.card?.type === 'meeting') return meetingCard(c, m);
+function toolItem(c: Conv, m: Message): HTMLElement | null {
+  const { card } = m;
+  if (card?.type === 'question') return questionCard(c, { ...m, card });
+  if (card?.type === 'skill') return skillCard(c, { ...m, card });
+  if (card?.type === 'meeting') return meetingCard(c, { ...m, card });
   if (m.sent && m.effect !== 'deny') return sentLine(m);
   return null;
 }
 
 // Turns "@Bot Name" in rendered text into a colored chip with its avatar.
-function decorateMentions(el, members) {
+function decorateMentions(el: HTMLElement, members: Bot[]): HTMLElement {
   if (!members.length) return el;
   const names = members.map((b) => b.name).sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   const re = new RegExp(`@(${names.join('|')})`, 'g');
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-  const nodes = [];
-  while (walker.nextNode()) if (re.test(walker.currentNode.nodeValue) && !walker.currentNode.parentElement.closest('code')) nodes.push(walker.currentNode);
+  const nodes: Text[] = [];
+  while (walker.nextNode()) if (re.test(walker.currentNode.nodeValue || '') && !walker.currentNode.parentElement?.closest('code')) nodes.push(walker.currentNode as Text);
   for (const node of nodes) {
     const frag = document.createDocumentFragment();
     let last = 0;
-    node.nodeValue.replace(re, (match, name, at) => {
-      frag.append(node.nodeValue.slice(last, at));
-      const bot = members.find((b) => b.name === name);
-      frag.append(h('span', { class: 'mention', style: `color:${bot.color}` }, avatar(bot, 16), name));
-      last = at + match.length;
-    });
-    frag.append(node.nodeValue.slice(last));
+    const text = node.data;
+    for (const match of text.matchAll(re)) {
+      const at = match.index;
+      frag.append(text.slice(last, at));
+      const bot = members.find((b) => b.name === match[1]);
+      frag.append(h('span', { class: 'mention', style: `color:${bot?.color}` }, avatar(bot, 16), match[1]));
+      last = at + match[0].length;
+    }
+    frag.append(text.slice(last));
     node.replaceWith(frag);
   }
   return el;
 }
 
-function botBubble(c, m) {
-  const members = m.threadOf ? S.bots : c.botIds.map(botById).filter(Boolean);
+function botBubble(c: Conv, m: Message): HTMLElement {
+  const members = m.threadOf ? S.bots : c.botIds.map(botById).filter((b): b is Bot => Boolean(b));
   return decorateMentions(h('div', { class: 'msg bot', 'data-msg': m.id, html: md(m.content) }), members);
 }
 
@@ -310,21 +335,21 @@ function botBubble(c, m) {
 // "답장 N개" row around one bubble.
 const QUICK = ['👍', '❤️', '😂', '🎉', '👀', '✅'];
 const MORE_EMOJI = ['🙏', '🔥', '💯', '😮', '😢', '🤔', '👏', '🙌', '💡', '📌', '⏰', '❌'];
-function withExtras(c, m, bubble, side, { inThread = false } = {}) {
-  const react = (e) => act('toggleReaction', c.id, m.id, e);
+function withExtras(c: Conv, m: Message, bubble: HTMLElement, side: 'bot' | 'user', { inThread = false } = {}): HTMLElement {
+  const react = (e: string) => act('toggleReaction', c.id, m.id, e);
   const bar = h('div', { class: 'msg-actions' },
     QUICK.slice(0, 3).map((e) => h('button', { class: 'emoji', title: `${e}(으)로 반응`, onclick: () => react(e) }, e)),
-    h('button', { title: '반응 추가', onclick: (ev) => emojiPicker(ev.currentTarget, react) }, icon('smile', 16)),
+    h('button', { title: '반응 추가', onclick: (ev) => emojiPicker(ev.currentTarget as Element, react) }, icon('smile', 16)),
     inThread ? null : h('button', { title: '스레드에서 답장', onclick: () => openThread(m.id) }, icon('thread', 16)));
   const reactions = m.reactions?.length ? h('div', { class: 'reactions' }, m.reactions.map((e) => h('button', { class: 'reaction mine', title: '반응 제거', onclick: () => react(e) }, e, h('span', {}, '1')))) : null;
   const replies = inThread ? [] : c.messages.filter((x) => x.threadOf === m.id && (x.role === 'user' || x.content || x.error));
-  const repliers = [...new Set(replies.filter((x) => x.role === 'assistant').map((x) => x.botId))].map(botById).filter(Boolean);
+  const repliers = [...new Set(replies.filter((x) => x.role === 'assistant').map((x) => x.botId))].map((id) => botById(id)).filter((b): b is Bot => Boolean(b));
   const row = replies.length ? h('button', { class: 'replies', onclick: () => openThread(m.id) },
-    repliers.slice(0, 3).map((b) => avatar(b, 18)), h('b', {}, `답장 ${replies.length}개`), h('span', { class: 'muted' }, relativeDay(replies.at(-1).ts))) : null;
+    repliers.slice(0, 3).map((b) => avatar(b, 18)), h('b', {}, `답장 ${replies.length}개`), h('span', { class: 'muted' }, relativeDay(replies[replies.length - 1].ts))) : null;
   return h('div', { class: `msg-wrap ${side}` }, bubble, reactions, row, bar);
 }
 
-function emojiPicker(anchor, pick) {
+function emojiPicker(anchor: Element, pick: (emoji: string) => void): void {
   document.querySelectorAll('.popover').forEach((x) => x.remove());
   const rect = anchor.getBoundingClientRect();
   const menu = h('div', { class: 'popover menu emoji-grid' }, h('div', { class: 'menu-head' }, '빠른 반응'),
@@ -333,13 +358,13 @@ function emojiPicker(anchor, pick) {
   menu.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - menu.offsetWidth - 8))}px`;
   menu.style.top = `${Math.max(8, rect.top - menu.offsetHeight - 6)}px`;
   setTimeout(() => document.addEventListener('mousedown', function off(e) {
-    if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('mousedown', off, true); }
+    if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener('mousedown', off, true); }
   }, true));
 }
 
 // Messages another bot sent to this chat (and the replies) fold into one
 // "메시지 N개 · [avatar] name" row, as in Grok Bot.
-function bundleItem(c, run) {
+function bundleItem(c: Conv, run: Message[]): HTMLElement {
   const from = botById(run[0].viaBotId);
   const n = run.filter((m) => (m.role === 'user' || m.role === 'assistant') && (m.content || m.error)).length;
   const key = run[0].id;
@@ -351,10 +376,10 @@ function bundleItem(c, run) {
 }
 
 // Render items (bubbles, cards, time stamps) for a list of messages.
-function messageItems(c, list, opts = {}) {
-  const items = [];
+function messageItems(c: Conv, list: Message[], opts: { inThread?: boolean } = {}): HTMLElement[] {
+  const items: HTMLElement[] = [];
   let lastTs = 0;
-  let lastSender = null;
+  let lastSender: string | null | undefined = null;
   for (let i = 0; i < list.length; i++) {
     const m = list[i];
     if (m.ts - lastTs > 30 * 60_000) { items.push(h('div', { class: 'when' }, relativeDay(m.ts))); lastSender = null; }
@@ -386,7 +411,7 @@ function messageItems(c, list, opts = {}) {
       if (m.routineId) { items.push(h('div', { class: 'routine-tag' }, icon('clock', 14), m.content.replace(/^⏰ 루틴: /, '루틴 · '))); continue; }
       if (m.attachments?.length) items.push(h('div', { class: 'attach-row' }, m.attachments.map((a) => (a.dataUrl ? h('img', { class: 'thumb', src: a.dataUrl, title: '이미지 전체 화면으로 열기' }) : h('span', { class: 'chip' }, icon('file', 14), a.name)))));
       if (skill) items.push(h('div', { class: 'attach-row' }, h('span', { class: 'chip' }, icon('sparkle', 14), skill.name)));
-      items.push(withExtras(c, m, m.voice ? voiceBubble(m) : h('div', { class: 'msg user' }, m.content), 'user', opts));
+      items.push(withExtras(c, m, m.voice ? voiceBubble({ ...m, voice: m.voice }) : h('div', { class: 'msg user' }, m.content), 'user', opts));
       continue;
     }
     // assistant
@@ -407,10 +432,10 @@ const typingBubble = () => h('div', { class: 'typing' }, h('span'), h('span'), h
 
 // "RO Agent, PR Agent 및 RI Agent 작업 중…": the bot answering now, bots it
 // handed work to, then the ones queued after it.
-function activityRow(c) {
+function activityRow(c: Conv): HTMLElement | null {
   const a = S.runtime.active?.[c.id];
   if (!a || a.threadOf) return null;
-  const bots = [...new Set([a.botId, ...(a.delegates || []), ...(a.queue || [])])].map(botById).filter(Boolean);
+  const bots = [...new Set([a.botId, ...(a.delegates || []), ...(a.queue || [])])].map(botById).filter((b): b is Bot => Boolean(b));
   if (!bots.length) return null;
   const st = botState(a.botId);
   const verb = st === 'blocked' ? '승인 기다리는 중' : st === 'streaming' && bots.length === 1 ? '입력 중' : '작업 중';
@@ -420,7 +445,7 @@ function activityRow(c) {
 }
 
 function renderThread() {
-  const c = conv();
+  const c = currentConv();
   const thread = $('#chat .thread');
   if (editing(thread)) return; // a draft is being edited
   const stick = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
@@ -440,7 +465,7 @@ function renderThread() {
 
 // ---------- threads (open in the right panel, beside the main chat) ----------
 
-function openThread(id) {
+function openThread(id: string): void {
   ui.threadId = id;
   ui.panelOpen = true;
   render(true);
@@ -455,13 +480,13 @@ function closeThread() {
 
 // The view is built once per thread so its composer keeps focus and text; only
 // the message list is redrawn.
-function threadView(c) {
+function threadView(c: Conv): HTMLElement | null {
   const root = c.messages.find((m) => m.id === ui.threadId);
   if (!root) { ui.threadId = null; return null; }
   let els = ui.threadEls;
   if (els?.rootId !== root.id) {
-    const ta = h('textarea', { rows: 1, placeholder: '스레드에 답장… (@이름으로 다른 Bot 부르기)',
-      oninput: () => { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight}px`; sendBtn.classList.toggle('idle', !ta.value.trim()); renderSuggest(ta, ta.parentElement, true); },
+    const ta: HTMLTextAreaElement = h('textarea', { rows: 1, placeholder: '스레드에 답장… (@이름으로 다른 Bot 부르기)',
+      oninput: () => { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight}px`; sendBtn.classList.toggle('idle', !ta.value.trim()); renderSuggest(ta, ta.parentElement || undefined, true); },
       onkeydown: (e) => { if (suggestKeys(e)) return; if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); reply(); } },
       onblur: hideSuggest });
     const reply = async () => {
@@ -472,7 +497,7 @@ function threadView(c) {
       sendBtn.classList.add('idle');
       await act('send', c.id, text, [], null, { threadOf: root.id });
     };
-    const sendBtn = h('button', { class: 'round action send idle', title: '보내기', onclick: () => reply() }, icon('send', 18));
+    const sendBtn: HTMLElement = h('button', { class: 'round action send idle', title: '보내기', onclick: () => reply() }, icon('send', 18));
     els = ui.threadEls = { rootId: root.id, ta, list: h('div', { class: 'thread-list' }) };
     els.view = h('div', { class: 'thread-view' },
       h('div', { class: 'panel-top' },
@@ -490,16 +515,16 @@ function threadView(c) {
     messageItems(c, replies, { inThread: true }), typing ? typingBubble() : null);
   renderDiagrams(els.list);
   if (stick || typing) els.list.scrollTop = els.list.scrollHeight;
-  return els.view;
+  return els.view || null;
 }
 
 function renderChat() {
-  const c = conv();
+  const c = currentConv();
   const accent = S.settings.accent === 'bot' ? botById(c.botIds[0])?.color : null;
   document.documentElement.style.setProperty('--accent', accent || '#1f7aec');
   fill($('#chat .chat-top'),
     h('button', { class: 'pill', title: ui.panelOpen ? '세부 정보 닫기' : '세부 정보 열기', onclick: () => { ui.panelOpen = !ui.panelOpen; render(true); } }, convAvatar(c, 24), convTitle(c)));
-  const ta = $('#chat textarea');
+  const ta = $<HTMLTextAreaElement>('#chat textarea');
   ta.placeholder = c.kind === 'group' ? `${c.name}에게 메시지 보내기` : '답변을 입력하거나 다른 이야기를 하세요';
   ta.spellcheck = S.settings.spellcheck;
   renderThread();
@@ -508,7 +533,7 @@ function renderChat() {
 
 // ---------- composer ----------
 
-const input = () => $('#chat textarea');
+const input = () => $<HTMLTextAreaElement>('#chat textarea');
 
 function renderComposerState() {
   const running = isRunning(ui.convId);
@@ -518,13 +543,14 @@ function renderComposerState() {
   btn.title = running ? '중지' : rec ? '음성 메모 보내기' : '보내기';
   fill(btn, icon(running ? 'stop' : 'send', running ? 16 : 18));
   $('#chat .composer .mic').classList.toggle('on', Boolean(rec));
-  $('#chat .composer .mic').disabled = Boolean(rec) || ui.voiceBusy;
+  $<HTMLButtonElement>('#chat .composer .mic').disabled = Boolean(rec) || Boolean(ui.voiceBusy);
   $('#chat .composer').classList.toggle('recording', Boolean(rec || ui.voiceBusy));
   const skill = S.skills.find((s) => s.id === ui.skillId);
   if (rec || ui.voiceBusy) {
+    const r = rec;
     return fill($('#chat .pending-attach'), h('span', { class: 'chip voice-chip' },
       ui.voiceBusy ? [h('span', { class: 'ring spin small' }), '음성 변환 중…']
-        : [h('span', { class: 'rec-dot' }), `음성 메모 녹음 중 · ${clock((Date.now() - rec.start) / 1000)}`, h('button', { class: 'x', title: '녹음 버리기', onclick: discardVoice }, '버리기')]));
+        : [h('span', { class: 'rec-dot' }), `음성 메모 녹음 중 · ${clock((Date.now() - (r?.start ?? Date.now())) / 1000)}`, h('button', { class: 'x', title: '녹음 버리기', onclick: discardVoice }, '버리기')]));
   }
   fill($('#chat .pending-attach'),
     skill ? h('span', { class: 'chip' }, icon('sparkle', 13), skill.name, h('button', { class: 'x', onclick: () => { ui.skillId = null; renderComposerState(); } }, '×')) : null,
@@ -534,10 +560,10 @@ function renderComposerState() {
 // "/" at the start suggests skills; "@" suggests everyone and members (in a group)
 // plus connected apps, as in Grok Bot. In a thread "@" offers every bot: the one
 // named joins the thread and answers there.
-const APP_STATUS = { connected: '연결됨', auth: '인증 필요', error: '오류', connecting: '연결 중' };
-function suggestions(el = input(), thread = false) {
+const APP_STATUS: Record<string, string> = { connected: '연결됨', auth: '인증 필요', error: '오류', connecting: '연결 중' };
+function suggestions(el: HTMLTextAreaElement = input(), thread = false): Suggestion[] {
   const before = el.value.slice(0, el.selectionStart);
-  const c = conv();
+  const c = currentConv();
   const slash = before.match(/^\/([^\s]*)$/);
   if (slash && !thread) {
     const ids = new Set(c.botIds.flatMap((id) => botById(id)?.skillIds || []));
@@ -547,20 +573,20 @@ function suggestions(el = input(), thread = false) {
   const at = before.match(/@([^@\n]*)$/);
   if (at) {
     const q = at[1].toLowerCase();
-    const insert = (name) => () => { el.value = `${before.slice(0, -at[0].length)}@${name} ${el.value.slice(before.length)}`; };
-    const people = thread ? S.bots.map((b) => ({ label: b.name, bot: b, kind: 'Bot', apply: insert(b.name) })) : c.kind === 'group' ? [
+    const insert = (name: string) => () => { el.value = `${before.slice(0, -at[0].length)}@${name} ${el.value.slice(before.length)}`; };
+    const people: Suggestion[] = thread ? S.bots.map((b) => ({ label: b.name, bot: b, kind: 'Bot', apply: insert(b.name) })) : c.kind === 'group' ? [
       { label: '모든 사람', icon: 'at', kind: 'Bot', apply: insert('모든 사람') },
-      ...c.botIds.map(botById).filter(Boolean).map((b) => ({ label: b.name, bot: b, kind: 'Bot', apply: insert(b.name) })),
+      ...c.botIds.map(botById).filter((b): b is Bot => Boolean(b)).map((b) => ({ label: b.name, bot: b, kind: 'Bot', apply: insert(b.name) })),
     ] : [];
-    const apps = S.mcpServers.filter((sv) => sv.enabled).map((sv) => ({
-      label: sv.name, tile: serverTile(sv, 20), status: APP_STATUS[S.mcpStatus[sv.id]?.status] || '', kind: '플러그인', apply: insert(sv.name),
+    const apps: Suggestion[] = S.mcpServers.filter((sv) => sv.enabled).map((sv) => ({
+      label: sv.name, tile: serverTile(sv, 20), status: APP_STATUS[S.mcpStatus[sv.id]?.status || ''] || '', kind: '플러그인', apply: insert(sv.name),
     }));
     return [...people, ...apps].filter((x) => x.label.toLowerCase().includes(q));
   }
   return [];
 }
 
-function renderSuggest(el = input(), anchor = $('#chat .composer'), thread = false) {
+function renderSuggest(el: HTMLTextAreaElement = input(), anchor: Element = $('#chat .composer'), thread = false): void {
   document.querySelector('.suggest')?.remove();
   const list = suggestions(el, thread);
   ui.suggest = list.length ? { list, index: 0, el } : null;
@@ -569,7 +595,7 @@ function renderSuggest(el = input(), anchor = $('#chat .composer'), thread = fal
   const menu = h('div', { class: 'menu suggest' }, list.map((s, i) => h('button', {
     class: i === 0 ? 'sel' : '',
     onmousedown: (e) => { e.preventDefault(); pick(i); },
-  }, s.bot ? avatar(s.bot, 20) : s.tile || icon(s.icon, 16),
+  }, s.bot ? avatar(s.bot, 20) : s.tile || icon(s.icon || '', 16),
     h('span', { class: 'grow ellipsis' }, s.label, s.status ? h('span', { class: 'muted small' }, `  ${s.status}`) : null),
     s.hint ? h('span', { class: 'muted small ellipsis', style: 'max-width:200px' }, s.hint) : null,
     s.kind ? h('span', { class: 'muted small' }, s.kind) : null)));
@@ -578,27 +604,29 @@ function renderSuggest(el = input(), anchor = $('#chat .composer'), thread = fal
   menu.style.top = `${rect.top - menu.offsetHeight - 8}px`;
 }
 
-function pick(i) {
+function pick(i: number): void {
+  if (!ui.suggest) return;
   const { el } = ui.suggest;
   ui.suggest.list[i].apply();
   document.querySelector('.suggest')?.remove();
   ui.suggest = null;
   el.focus();
   if (el === input()) renderComposerState();
-  else el.parentElement.querySelector('.action')?.classList.remove('idle');
+  else el.parentElement?.querySelector('.action')?.classList.remove('idle');
 }
 
 // Arrow keys / Enter / Tab / Esc while the suggestion menu is open. True if handled.
-function suggestKeys(e) {
-  if (!ui.suggest) return false;
-  const max = ui.suggest.list.length;
+function suggestKeys(e: KeyboardEvent): boolean {
+  const { suggest } = ui;
+  if (!suggest) return false;
+  const max = suggest.list.length;
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault();
-    ui.suggest.index = (ui.suggest.index + (e.key === 'ArrowDown' ? 1 : max - 1)) % max;
-    [...document.querySelector('.suggest').children].forEach((b, i) => b.classList.toggle('sel', i === ui.suggest.index));
+    suggest.index = (suggest.index + (e.key === 'ArrowDown' ? 1 : max - 1)) % max;
+    [...(document.querySelector('.suggest')?.children || [])].forEach((b, i) => b.classList.toggle('sel', i === suggest.index));
     return true;
   }
-  if ((e.key === 'Enter' || e.key === 'Tab') && !e.isComposing) { e.preventDefault(); pick(ui.suggest.index); return true; }
+  if ((e.key === 'Enter' || e.key === 'Tab') && !e.isComposing) { e.preventDefault(); pick(suggest.index); return true; }
   if (e.key === 'Escape') { document.querySelector('.suggest')?.remove(); ui.suggest = null; return true; }
   return false;
 }
@@ -606,7 +634,7 @@ const hideSuggest = () => setTimeout(() => { document.querySelector('.suggest')?
 
 // ---------- voice memos: record, transcribe on device, send ----------
 
-let rec = null; // { media, chunks, start, stream, timer }
+let rec: { media: MediaRecorder; chunks: Blob[]; start: number; stream: MediaStream; timer: ReturnType<typeof setInterval> } | null = null;
 async function startVoice() {
   if (rec || ui.voiceBusy || vc) return;
   if (!(await act('micAccess'))) return toast('마이크 권한이 필요해요. 시스템 설정 › 개인정보 보호 및 보안 › 마이크에서 허용해 주세요');
@@ -623,9 +651,10 @@ async function startVoice() {
   renderComposerState();
 }
 
-function stopVoice() {
+function stopVoice(): Promise<{ blob: Blob; duration: number }> {
   const r = rec;
   rec = null;
+  if (!r) return Promise.resolve({ blob: new Blob(), duration: 0 });
   clearInterval(r.timer);
   return new Promise((resolve) => {
     r.media.onstop = () => { r.stream.getTracks().forEach((t) => t.stop()); resolve({ blob: new Blob(r.chunks, { type: 'audio/webm' }), duration: (Date.now() - r.start) / 1000 }); };
@@ -641,6 +670,7 @@ async function discardVoice() {
 async function sendVoice() {
   const convId = ui.convId;
   const { blob, duration } = await stopVoice();
+  if (!convId) return;
   if (duration < 0.6) return renderComposerState();
   ui.voiceBusy = true;
   renderComposerState();
@@ -657,11 +687,29 @@ async function sendVoice() {
 // Turn-based: the mic listens until ~1.2 s of silence, the on-device
 // transcriber turns it into a message, the reply is spoken with the system
 // voice, then it listens again. The mic pauses while the bot speaks (no echo).
-let vc = null;
+type VoiceChat = {
+  convId: string;
+  stream: MediaStream;
+  ctx: AudioContext;
+  analyser: AnalyserNode;
+  buf: Float32Array<ArrayBuffer>;
+  level: number;
+  state: keyof typeof VC_LABEL;
+  media: MediaRecorder | null;
+  chunks: Blob[];
+  voiced: number;
+  silentSince: number;
+  start: number;
+  raf: number;
+  after: number;
+  sawRunning: boolean;
+};
+let vc: VoiceChat | null = null;
 const VC_LABEL = { listening: '듣는 중', transcribing: '받아 적는 중', thinking: '생각 중', speaking: '말하는 중' };
 
 async function startVoiceChat() {
-  if (vc || rec) return;
+  if (vc || rec || !ui.convId) return;
+  const convId = ui.convId;
   if (!(await act('micAccess'))) return toast('마이크 권한이 필요해요. 시스템 설정 › 개인정보 보호 및 보안 › 마이크에서 허용해 주세요');
   let stream;
   try {
@@ -673,7 +721,7 @@ async function startVoiceChat() {
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 1024;
   ctx.createMediaStreamSource(stream).connect(analyser);
-  vc = { convId: ui.convId, stream, ctx, analyser, buf: new Float32Array(1024), level: 0 };
+  vc = { convId, stream, ctx, analyser, buf: new Float32Array(1024), level: 0, state: 'listening', media: null, chunks: [], voiced: 0, silentSince: 0, start: Date.now(), raf: 0, after: 0, sawRunning: false };
   vcListen();
 }
 
@@ -689,76 +737,82 @@ function stopVoiceChat() {
 }
 
 function vcListen() {
-  Object.assign(vc, { state: 'listening', chunks: [], voiced: 0, silentSince: 0, start: Date.now() });
-  vc.media = new MediaRecorder(vc.stream, { mimeType: 'audio/webm;codecs=opus' });
-  vc.media.ondataavailable = (e) => vc?.chunks.push(e.data);
-  vc.media.start(250);
+  const v = vc;
+  if (!v) return;
+  Object.assign(v, { state: 'listening', chunks: [], voiced: 0, silentSince: 0, start: Date.now() });
+  const media = new MediaRecorder(v.stream, { mimeType: 'audio/webm;codecs=opus' });
+  v.media = media;
+  media.ondataavailable = (e) => v.chunks.push(e.data);
+  media.start(250);
   renderVoiceChat();
   const tick = () => {
-    if (!vc || vc.state !== 'listening') return;
-    vc.analyser.getFloatTimeDomainData(vc.buf);
-    const rms = Math.sqrt(vc.buf.reduce((a, x) => a + x * x, 0) / vc.buf.length);
-    vc.level = Math.min(1, rms * 12);
+    if (vc !== v || v.state !== 'listening') return;
+    v.analyser.getFloatTimeDomainData(v.buf);
+    const rms = Math.sqrt(v.buf.reduce((a, x) => a + x * x, 0) / v.buf.length);
+    v.level = Math.min(1, rms * 12);
     const now = Date.now();
-    if (rms > 0.02) { vc.voiced += 1; vc.silentSince = 0; } else if (vc.voiced > 8) {
-      vc.silentSince ||= now;
-      if (now - vc.silentSince > 1200) return vcFinish();
+    if (rms > 0.02) { v.voiced += 1; v.silentSince = 0; } else if (v.voiced > 8) {
+      v.silentSince ||= now;
+      if (now - v.silentSince > 1200) return vcFinish(v, media);
     }
-    const bar = document.querySelector('.voice-chat .level');
-    if (bar) bar.style.transform = `scaleX(${0.08 + vc.level})`;
-    vc.raf = requestAnimationFrame(tick);
+    const bar = document.querySelector<HTMLElement>('.voice-chat .level');
+    if (bar) bar.style.transform = `scaleX(${0.08 + v.level})`;
+    v.raf = requestAnimationFrame(tick);
   };
   tick();
 }
 
-async function vcFinish() {
-  vc.state = 'transcribing';
+async function vcFinish(v: VoiceChat, media: MediaRecorder) {
+  v.state = 'transcribing';
   renderVoiceChat();
-  const duration = (Date.now() - vc.start) / 1000;
-  const blob = await new Promise((resolve) => { vc.media.onstop = () => resolve(new Blob(vc.chunks, { type: 'audio/webm' })); vc.media.stop(); });
-  if (!vc) return;
+  const duration = (Date.now() - v.start) / 1000;
+  const blob = await new Promise<Blob>((resolve) => { media.onstop = () => resolve(new Blob(v.chunks, { type: 'audio/webm' })); media.stop(); });
+  if (vc !== v) return;
   const text = await act('transcribe', await toWav16k(blob)).catch(() => '');
-  if (!vc) return;
-  if (!text?.trim() || isRunning(vc.convId)) return vcListen();
-  Object.assign(vc, { state: 'thinking', after: S.convs.find((c) => c.id === vc.convId)?.messages.length || 0, sawRunning: false });
+  if (vc !== v) return;
+  if (!text?.trim() || isRunning(v.convId)) return vcListen();
+  Object.assign(v, { state: 'thinking', after: S.convs.find((c) => c.id === v.convId)?.messages.length || 0, sawRunning: false });
   renderVoiceChat();
-  await act('send', vc.convId, text, [], null, { voice: { dataUrl: await blobToDataUrl(blob), duration }, voiceChat: true });
+  await act('send', v.convId, text, [], null, { voice: { dataUrl: await blobToDataUrl(blob), duration }, voiceChat: true });
 }
 
 // Called on every state update: once the reply is in, read it out.
 function renderVoiceChat() {
   const el = $('#chat .voice-chat');
-  if (vc?.state === 'thinking') {
-    if (isRunning(vc.convId)) vc.sawRunning = true;
-    else if (vc.sawRunning) {
-      const c = S.convs.find((x) => x.id === vc.convId);
-      const reply = (c?.messages.slice(vc.after) || []).filter((m) => m.role === 'assistant' && !m.threadOf && (m.content || m.error)).map((m) => m.content || '오류가 났어요').join(' ');
-      vc.state = 'speaking';
+  const v = vc;
+  if (v?.state === 'thinking') {
+    if (isRunning(v.convId)) v.sawRunning = true;
+    else if (v.sawRunning) {
+      const c = S.convs.find((x) => x.id === v.convId);
+      const reply = (c?.messages.slice(v.after) || []).filter((m) => m.role === 'assistant' && !m.threadOf && (m.content || m.error)).map((m) => m.content || '오류가 났어요').join(' ');
+      v.state = 'speaking';
       const u = new SpeechSynthesisUtterance(reply.replace(/```[\s\S]*?```/g, ' 코드 생략 ').replace(/[#*`>_|]/g, ' ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') || '답이 없어요');
       u.lang = 'ko-KR';
-      u.voice = speechSynthesis.getVoices().find((v) => v.lang.startsWith('ko')) || null;
+      u.voice = speechSynthesis.getVoices().find((x) => x.lang.startsWith('ko')) || null;
       u.onend = () => { if (vc?.state === 'speaking') vcListen(); };
       speechSynthesis.speak(u);
     }
   }
   if (!el) return;
-  el.classList.toggle('on', Boolean(vc));
-  if (!vc) return fill(el);
-  const bot = botById(S.convs.find((c) => c.id === vc.convId)?.botIds[0]);
+  el.classList.toggle('on', Boolean(v));
+  if (!v) return fill(el);
+  const bot = botById(S.convs.find((c) => c.id === v.convId)?.botIds[0]);
   fill(el, bot ? avatar(bot, 22) : null,
-    h('span', { class: 'grow' }, `음성 채팅 · ${VC_LABEL[vc.state]}`, vc.convId !== ui.convId ? h('span', { class: 'muted' }, ` (${bot?.name || ''})`) : null),
-    vc.state === 'listening' ? h('span', { class: 'meter-wrap' }, h('span', { class: 'level' })) : null,
-    vc.state === 'speaking' ? h('button', { class: 'btn ghost', onclick: () => { speechSynthesis.cancel(); vcListen(); } }, '건너뛰기') : null,
+    h('span', { class: 'grow' }, `음성 채팅 · ${VC_LABEL[v.state]}`, v.convId !== ui.convId ? h('span', { class: 'muted' }, ` (${bot?.name || ''})`) : null),
+    v.state === 'listening' ? h('span', { class: 'meter-wrap' }, h('span', { class: 'level' })) : null,
+    v.state === 'speaking' ? h('button', { class: 'btn ghost', onclick: () => { speechSynthesis.cancel(); vcListen(); } }, '건너뛰기') : null,
     h('button', { class: 'btn ghost danger', onclick: stopVoiceChat }, '끝내기'));
 }
 
 async function submit() {
-  if (isRunning(ui.convId)) return act('stop', ui.convId);
+  const convId = ui.convId;
+  if (!convId) return;
+  if (isRunning(convId)) return act('stop', convId);
   if (rec) return sendVoice();
   const text = input().value.trim();
   if (!text && !ui.attachments.length && !ui.skillId) return;
   const skill = S.skills.find((s) => s.id === ui.skillId);
-  await act('send', ui.convId, text || (skill ? `/${skill.name}` : '첨부 파일을 확인해 주세요'), ui.attachments, ui.skillId);
+  await act('send', convId, text || (skill ? `/${skill.name}` : '첨부 파일을 확인해 주세요'), ui.attachments, ui.skillId);
   input().value = '';
   input().style.height = 'auto';
   ui.attachments = [];
@@ -767,13 +821,13 @@ async function submit() {
 }
 
 function buildComposer() {
-  const plus = h('button', { class: 'round plain', title: '추가', onclick: () => popover(plus, [
+  const plus: HTMLElement = h('button', { class: 'round plain', title: '추가', onclick: () => popover(plus, [
     { icon: 'clip', label: '파일 첨부', onclick: async () => { ui.attachments.push(...(await act('pickAttachments') || [])); renderComposerState(); } },
     { icon: 'sparkle', label: '스킬 사용', onclick: () => { input().value = '/'; input().focus(); renderSuggest(); } },
   ], { place: 'above' }) }, icon('plus', 18));
   const textarea = h('textarea', {
     rows: 1,
-    oninput: (e) => { e.target.style.height = 'auto'; e.target.style.height = `${e.target.scrollHeight}px`; renderSuggest(); renderComposerState(); },
+    oninput: (e) => { const el = e.target as unknown as HTMLTextAreaElement; el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; renderSuggest(); renderComposerState(); },
     onkeydown: (e) => {
       if (suggestKeys(e)) return;
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); }
@@ -794,7 +848,8 @@ function buildComposer() {
 
 // ---------- right panel ----------
 
-function routinesSection(c) {
+function routinesSection(c: Conv): Child[] {
+  const url = (r: Routine) => S.routineInfo?.[r.id]?.url || '';
   const list = S.routines.filter((r) => r.convId === c.id);
   if (!list.length) return [h('div', { class: 'hint' }, '루틴은 이 Bot이 일정이나 이벤트(웹훅, 폴더 변경, GitHub PR)에 따라 실행하는 작업입니다. 채팅으로 설정해 달라고 요청해 주세요.')];
   return [
@@ -803,13 +858,13 @@ function routinesSection(c) {
       h('div', { class: 'row' }, h('span', { class: 'grow' }, r.prompt), toggle(r.enabled, (v) => act('setRoutineEnabled', r.id, v))),
       h('div', { class: 'row small muted' },
         h('span', { class: 'grow' }, `${S.routineInfo?.[r.id]?.when || ''}${c.kind === 'group' ? ` · ${botById(r.botId)?.name}` : ''}${r.failures ? ` · 실패 ${r.failures}회` : ''}`, S.routineInfo?.[r.id]?.error ? h('span', { class: 'danger' }, ` · ${S.routineInfo[r.id].error}`) : null),
-        S.routineInfo?.[r.id]?.url ? h('button', { class: 'btn ghost', title: S.routineInfo[r.id].url, onclick: () => { navigator.clipboard.writeText(S.routineInfo[r.id].url); toast('웹훅 주소를 복사했어요'); } }, icon('copy', 14), ' 주소') : null,
+        url(r) ? h('button', { class: 'btn ghost', title: url(r), onclick: () => { navigator.clipboard.writeText(url(r)); toast('웹훅 주소를 복사했어요'); } }, icon('copy', 14), ' 주소') : null,
         h('button', { class: 'btn ghost', onclick: () => act('runRoutineNow', r.id) }, '지금 실행'),
         h('button', { class: 'x', onclick: () => act('deleteRoutine', r.id) }, '×'))))),
   ];
 }
 
-function detailsTab(c, bot) {
+function detailsTab(c: Conv, bot: Bot | null | undefined): Child[] {
   const memories = bot ? [
     h('div', { class: 'section-title' }, `기억${bot.memories.length ? ` ${bot.memories.length}` : ''}`),
     h('div', { class: 'list' },
@@ -825,19 +880,20 @@ function detailsTab(c, bot) {
   return [
     ...routinesSection(c),
     ...memories,
-    bot ? h('div', { class: 'btns', style: 'justify-content:center;margin-top:20px' }, h('button', { class: 'btn', onclick: () => openConfigure(bot, c) }, icon('gear', 15), ' Bot 설정')) : null,
+    bot ? h('div', { class: 'btns', style: 'justify-content:center;margin-top:20px' }, h('button', { class: 'btn', onclick: () => openConfigure(bot) }, icon('gear', 15), ' Bot 설정')) : null,
   ];
 }
 
 // Shown from cache at once, then refreshed in the background (only redrawn on change).
-const libraryCache = new Map(); // convId -> files
-function libraryTab(c) {
+type LibraryFile = FileEntry & { botId: string };
+const libraryCache = new Map<string, LibraryFile[]>(); // convId -> files
+function libraryTab(c: Conv): Child[] {
   const body = h('div', {});
-  const bots = c.botIds.map(botById).filter(Boolean);
-  const draw = (files) => {
+  const bots = c.botIds.map(botById).filter((b): b is Bot => Boolean(b));
+  const draw = (files: LibraryFile[]) => {
     const now = Date.now();
-    const bucket = (f) => (now - f.mtime < 86400000 ? '오늘' : now - f.mtime < 7 * 86400000 ? '이번 주' : '이전');
-    const sections = ['오늘', '이번 주', '이전'].map((name) => [name, files.filter((f) => bucket(f) === name)]).filter(([, l]) => l.length);
+    const bucket = (f: LibraryFile) => (now - f.mtime < 86400000 ? '오늘' : now - f.mtime < 7 * 86400000 ? '이번 주' : '이전');
+    const sections = ['오늘', '이번 주', '이전'].map((name): [string, LibraryFile[]] => [name, files.filter((f) => bucket(f) === name)]).filter(([, l]) => l.length);
     fill(body, ...(files.length ? sections.flatMap(([name, list]) => [
       h('div', { class: 'section-title' }, name),
       h('div', { class: 'list' }, list.map((f) => h('button', { class: 'file', onclick: () => viewFile(f.botId, f.path) },
@@ -857,12 +913,12 @@ function libraryTab(c) {
   return [body];
 }
 
-async function viewFile(botId, rel) {
+async function viewFile(botId: string, rel: string) {
   const file = await act('readFile', botId, rel);
   if (file) openViewer(file, () => act('openFile', botId, rel));
 }
 
-function computerTab(c, bot) {
+function computerTab(c: Conv, bot: Bot): Child[] {
   const running = isRunning(c.id);
   const lastTool = [...c.messages].reverse().find((m) => m.role === 'tool' && m.botId === bot.id);
   const screen = running && lastTool
@@ -874,16 +930,16 @@ function computerTab(c, bot) {
     h('div', { class: 'caption' }, `${bot.name}의 화면`),
     entries.length ? [h('div', { class: 'section-title' }, '최근 활동'),
       h('div', { class: 'list activity' }, entries.map((a) => h('details', {},
-        h('summary', { class: 'row small' }, h('span', { class: `badge ${a.outcome}` }, a.outcome), h('span', { class: 'grow ellipsis' }, stepLabel({ name: a.tool, args: a.args })), h('span', { class: 'muted' }, new Date(a.ts).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' }))),
+        h('summary', { class: 'row small' }, h('span', { class: `badge ${a.outcome}` }, a.outcome), h('span', { class: 'grow ellipsis' }, stepLabel({ name: a.tool, args: a.args } as Message)), h('span', { class: 'muted' }, new Date(a.ts).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' }))),
         h('pre', {}, a.output))))] : null,
   ];
 }
 
-function membersTab(c) {
+function membersTab(c: Conv): Child[] {
   return [
     h('div', { class: 'list' }, S.bots.map((b) => h('label', { class: 'row' }, avatar(b, 28), h('span', { class: 'grow' }, b.name), toggle(c.botIds.includes(b.id), (v) => {
       const botIds = v ? [...c.botIds, b.id] : c.botIds.filter((x) => x !== b.id);
-      if (botIds.length < 2) return toast('그룹에는 Bot이 2개 이상 있어야 해요') || renderPanel(true);
+      if (botIds.length < 2) { toast('그룹에는 Bot이 2개 이상 있어야 해요'); renderPanel(true); return; }
       act('updateConv', c.id, { botIds });
     })))),
     h('div', { class: 'btns', style: 'justify-content:center' }, h('button', { class: 'btn ghost', onclick: openNewBot }, icon('plus', 15), ' 새 Bot 만들기')),
@@ -894,7 +950,7 @@ async function renderPanel(force = false) {
   const el = $('#panel');
   document.body.classList.toggle('panel-closed', !ui.panelOpen);
   if (!ui.panelOpen) return;
-  const c = conv();
+  const c = currentConv();
   const thread = ui.threadId && threadView(c);
   if (thread) {
     if (el.firstChild !== thread) fill(el, thread);
@@ -902,15 +958,15 @@ async function renderPanel(force = false) {
   }
   if (!force && editing(el)) return;
   const bot = c.kind === 'dm' ? botById(c.botIds[0]) : null;
-  const tabs = bot ? [['details', '세부 정보'], ['library', '라이브러리'], ['computer', '컴퓨터']] : [['details', '세부 정보'], ['library', '라이브러리'], ['members', '멤버']];
+  const tabs: [string, string][] = bot ? [['details', '세부 정보'], ['library', '라이브러리'], ['computer', '컴퓨터']] : [['details', '세부 정보'], ['library', '라이브러리'], ['members', '멤버']];
   if (!tabs.some(([k]) => k === ui.tab)) ui.tab = 'details';
-  const body = ui.tab === 'library' ? libraryTab(c) : ui.tab === 'computer' ? computerTab(c, bot) : ui.tab === 'members' ? membersTab(c) : detailsTab(c, bot);
+  const body = ui.tab === 'library' ? libraryTab(c) : ui.tab === 'computer' && bot ? computerTab(c, bot) : ui.tab === 'members' ? membersTab(c) : detailsTab(c, bot);
   if (!force && editing(el)) return;
   const scroll = el.scrollTop;
   fill(el,
     h('div', { class: 'panel-top' },
-      h('button', { class: 'circle-btn bordered', title: '더보기', onclick: (e) => popover(e.currentTarget, [
-        ...(bot ? [{ icon: 'gear', label: 'Bot 설정', onclick: () => openConfigure(bot, c) }] : []),
+      h('button', { class: 'circle-btn bordered', title: '더보기', onclick: (e) => popover(e.currentTarget as Element, [
+        ...(bot ? [{ icon: 'gear', label: 'Bot 설정', onclick: () => openConfigure(bot) }] : []),
         { icon: 'list', label: '대화 압축', onclick: () => { act('compactConv', c.id); toast('다음 답장부터 앞선 대화를 요약해서 이어가요'); } },
         { icon: 'close', label: '대화 기록 지우기', onclick: () => confirmThen('대화 기록을 지울까요?', '이 대화의 메시지와 세션이 지워져요.', () => act('clearConv', c.id), '지우기') },
         ...(c.kind === 'group' ? [{ icon: 'close', label: '그룹 삭제', class: 'danger', onclick: () => confirmThen('그룹 채팅을 삭제할까요?', '대화 기록이 지워져요. Bot들은 그대로 남아요.', () => act('deleteConv', c.id)) }] : []),
@@ -928,21 +984,22 @@ async function renderPanel(force = false) {
 
 // ---------- dialogs ----------
 
-function dialog(title, body, foot, cls = '') {
+function dialog(title: string, body: Child, foot?: Child, cls = ''): HTMLElement {
   return h('div', { class: `modal dialog ${cls}` },
     h('div', { class: 'dialog-head row' }, h('span', { class: 'grow' }, title), h('button', { class: 'muted', onclick: closeModal }, icon('close', 18))),
     h('div', { class: 'dialog-body' }, body),
     foot ? h('div', { class: 'dialog-foot' }, foot) : null);
 }
 
-function confirmThen(title, text, fn, label = '삭제') {
+function confirmThen(title: string, text: string, fn: () => void, label = '삭제'): void {
   openModal(dialog(title, h('div', { class: 'muted' }, text), [
     h('button', { class: 'btn', onclick: closeModal }, '취소'),
     h('button', { class: 'btn red', onclick: () => { closeModal(); fn(); } }, label)]));
 }
 
 // Shape + color picker used by "새 Bot 만들기" and the avatar editor.
-function avatarPicker(state, onChange) {
+type Look = { shape: number; color: string; image: string | null };
+function avatarPicker(state: Look, onChange?: () => void) {
   const preview = h('span', { class: 'avatar' });
   const shapes = h('div', { class: 'shapes' });
   const colors = h('div', { class: 'colors' });
@@ -957,31 +1014,31 @@ function avatarPicker(state, onChange) {
 
 // Profile: the round character (shape + color) or an AI icon made on ChatGPT
 // in Grok Bot Icon Studio style. Returns the dialog body and the look to save.
-function profileEditor(state, nameField = null) {
+function profileEditor(state: Look, nameField: HTMLElement | null = null) {
   let mode = state.image ? 'ai' : 'character';
   let busy = false;
-  let source = null; // data URL of the image to reinterpret
+  let source: string | null = null; // data URL of the image to reinterpret
   const body = h('div', { class: 'dialog-body creator', style: 'padding:6px 0' });
   const { preview, shapes, colors } = avatarPicker(state);
   const note = h('input', { class: 'field', placeholder: '추가 요청 (선택) · 예: 안경은 유지, 하늘색 머리' });
-  const file = h('input', { type: 'file', accept: 'image/*', style: 'display:none', onchange: () => file.files[0] && take(file.files[0]) });
-  const take = (f) => { const r = new FileReader(); r.onload = () => { source = r.result; draw(); }; r.readAsDataURL(f); };
-  const drop = h('button', { class: 'drop', onclick: () => file.click(),
+  const file: HTMLInputElement = h('input', { type: 'file', accept: 'image/*', style: 'display:none', onchange: () => file.files?.[0] && take(file.files[0]) });
+  const take = (f: File) => { const r = new FileReader(); r.onload = () => { source = r.result as string; draw(); }; r.readAsDataURL(f); };
+  const drop: HTMLElement = h('button', { class: 'drop', onclick: () => file.click(),
     ondragover: (e) => { e.preventDefault(); drop.classList.add('over'); }, ondragleave: () => drop.classList.remove('over'),
-    ondrop: (e) => { e.preventDefault(); drop.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f?.type.startsWith('image/')) take(f); } });
+    ondrop: (e) => { e.preventDefault(); drop.classList.remove('over'); const f = e.dataTransfer?.files[0]; if (f?.type.startsWith('image/')) take(f); } });
   const generate = async () => {
     if (!source && !state.image && !note.value.trim()) return toast('변환할 이미지를 올리거나 캐릭터를 설명해 주세요');
     busy = true; draw();
     // Without a new picture, "다시 생성" reworks the current icon (with the extra request, if any).
-    const image = await act('generateIcon', { source: source || state.image, note: note.value.trim() });
+    const image = await act('generateIcon', { source: source || state.image || undefined, note: note.value.trim() });
     busy = false;
     if (image) state.image = image;
     draw();
   };
   const seg = h('div', { class: 'seg' });
-  const draw = () => {
+  const draw = (): void => {
     fill(seg, ...[['character', '캐릭터'], ['ai', 'AI 프로필']].map(([k, label]) => h('button', { class: mode === k ? 'on' : '', onclick: () => { mode = k; draw(); } }, label)));
-    if (mode === 'character') return fill(body, seg, preview, nameField, shapes, colors);
+    if (mode === 'character') return void fill(body, seg, preview, nameField, shapes, colors);
     const ready = S.chatgpt?.loggedIn && S.settings.chatgpt;
     const face = busy ? h('div', { class: 'spin-wrap' }, h('span', { class: 'ring spin' }))
       : state.image ? avatar({ image: state.image }, 112) : h('div', { class: 'spin-wrap muted' }, icon('image', 30));
@@ -1011,15 +1068,15 @@ const ASSISTANTS = [
     routines: [{ every_minutes: 30, prompt: '새 메일을 분류하고, 긴급하거나 답장이 필요한 메일이 있으면 초안과 함께 알려줘.' }] },
 ];
 
-async function createFromTemplate(t) {
+async function createFromTemplate(t: (typeof ASSISTANTS)[number]) {
   const id = await act('createAssistant', t.name, { shape: Math.floor(Math.random() * SHAPE_COUNT), color: COLORS[Math.floor(Math.random() * COLORS.length)], label: t.description, systemPrompt: `${t.prompt}\n\n${ASSISTANT_RULES}` }, t.routines);
   if (id) { ui.tab = 'details'; select(id); }
 }
 
 function openNewBot() {
-  const state = { shape: Math.floor(Math.random() * SHAPE_COUNT), color: COLORS[10], image: null };
+  const state: Look = { shape: Math.floor(Math.random() * SHAPE_COUNT), color: COLORS[10], image: null };
   const create = h('button', { class: 'btn primary', disabled: true }, '만들기');
-  const name = h('input', { class: 'field name', placeholder: 'Bot 이름 입력', oninput: () => { create.disabled = !name.value.trim(); } });
+  const name: HTMLInputElement = h('input', { class: 'field name', placeholder: 'Bot 이름 입력', oninput: () => { create.disabled = !name.value.trim(); } });
   const { body, look } = profileEditor(state, name);
   create.onclick = async () => {
     const id = await act('createBot', name.value.trim(), look());
@@ -1029,7 +1086,7 @@ function openNewBot() {
   name.focus();
 }
 
-function openAvatarEditor(bot) {
+function openAvatarEditor(bot: Bot) {
   const { body, look } = profileEditor({ shape: shapeOf(bot), color: bot.color, image: bot.image || null });
   openModal(dialog('프로필 편집', body, [
     h('button', { class: 'btn', onclick: closeModal }, '취소'),
@@ -1038,13 +1095,14 @@ function openAvatarEditor(bot) {
 
 // To: one bot opens its chat; two or more start a group (as in OpenBot).
 function openNewMessage() {
-  const chosen = new Set();
+  const chosen = new Set<string>();
   const name = h('input', { class: 'field', placeholder: '그룹 이름 (선택)' });
   const go = h('button', { class: 'btn primary', disabled: true }, '시작');
   const rows = S.bots.map((b) => h('button', { class: 'pick-row', onclick: (e) => {
-    chosen.has(b.id) ? chosen.delete(b.id) : chosen.add(b.id);
-    e.currentTarget.classList.toggle('sel', chosen.has(b.id));
-    e.currentTarget.querySelector('.check').style.visibility = chosen.has(b.id) ? 'visible' : 'hidden';
+    const row = e.currentTarget as HTMLElement;
+    if (chosen.has(b.id)) chosen.delete(b.id); else chosen.add(b.id);
+    row.classList.toggle('sel', chosen.has(b.id));
+    row.querySelector<HTMLElement>('.check')!.style.visibility = chosen.has(b.id) ? 'visible' : 'hidden';
     go.disabled = !chosen.size;
     go.textContent = chosen.size > 1 ? '그룹 채팅 만들기' : '시작';
   } }, avatar(b, 30), h('span', { class: 'grow' }, b.name, b.label ? h('span', { class: 'muted small' }, ` · ${b.label}`) : null), h('span', { class: 'check', style: 'visibility:hidden' }, icon('check', 16))));
@@ -1062,10 +1120,10 @@ function openNewMessage() {
 function importBotsCsv() {
   const file = h('input', { type: 'file', accept: '.csv,.tsv,text/csv' });
   file.onchange = async () => {
-    const f = file.files[0];
+    const f = file.files?.[0];
     if (!f) return;
     const [head = [], ...rows] = parseCsv(await f.text(), f.name.endsWith('.tsv') ? '\t' : ',');
-    const col = (...names) => head.findIndex((x) => names.includes(x.trim().toLowerCase()));
+    const col = (...names: string[]) => head.findIndex((x) => names.includes(x.trim().toLowerCase()));
     const at = { name: col('name', '이름'), role: col('role', '역할', 'systemprompt', 'system_prompt'), label: col('label', '라벨', '설명'), model: col('model', '모델') };
     if (at.name < 0) return toast('CSV 첫 줄에 name(이름) 열이 있어야 해요');
     const bots = rows.map((r) => ({ name: r[at.name]?.trim(), role: r[at.role]?.trim(), label: r[at.label]?.trim(), model: r[at.model]?.trim() })).filter((b) => b.name).slice(0, 50);
@@ -1082,7 +1140,7 @@ function importBotsCsv() {
 
 // Grok Bot's memory import: copy a prompt into the other assistant, paste its answer back.
 const MEMORY_EXPORT_PROMPT = '지금까지 나에 대해 기억하거나 알고 있는 사실(이름, 직업, 프로젝트, 선호, 자주 쓰는 도구, 진행 중인 일 등)을 빠짐없이 한 줄에 하나씩 "- "로 시작하는 목록으로만 출력해 줘. 설명이나 머리말은 쓰지 마.';
-function openMemoryImport(bot = botById(conv()?.botIds[0]) || S.bots[0]) {
+function openMemoryImport(bot: Bot | undefined = botById(conv()?.botIds[0]) || S.bots[0]) {
   const pick = h('select', { class: 'select' }, S.bots.map((b) => h('option', { value: b.id, selected: b.id === bot?.id ? true : null }, b.name)));
   const pasted = h('textarea', { class: 'field', style: 'min-height:150px', placeholder: '다른 AI가 출력한 목록을 여기에 붙여 넣으세요' });
   const lines = () => pasted.value.split('\n').map((l) => l.replace(/^\s*([-*•]|\d+[.)])\s*/, '').trim()).filter((l) => l.length > 2);
@@ -1100,20 +1158,21 @@ function openMemoryImport(bot = botById(conv()?.botIds[0]) || S.bots[0]) {
 
 // ---------- background tasks: what every bot is doing, plus recent runs ----------
 
-const ago = (ms) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))}초` : ms < 3_600_000 ? `${Math.round(ms / 60_000)}분` : `${Math.round(ms / 3_600_000)}시간`);
+const ago = (ms: number) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))}초` : ms < 3_600_000 ? `${Math.round(ms / 60_000)}분` : `${Math.round(ms / 3_600_000)}시간`);
 function openTasks() {
   ui.tasksBody = h('div', { class: 'tasks' });
   openModal(dialog('백그라운드 작업', [ui.tasksBody], [h('button', { class: 'btn', onclick: closeModal }, '닫기')]), () => { ui.tasksBody = null; });
   renderTasks();
 }
 function renderTasks() {
-  if (!ui.tasksBody?.isConnected) return;
+  const body = ui.tasksBody;
+  if (!body?.isConnected) return;
   const now = Date.now();
-  const open = (convId) => () => { closeModal(); select(convId); };
+  const open = (convId: string) => () => { closeModal(); select(convId); };
   const running = S.runtime.running.map((convId) => {
     const c = S.convs.find((x) => x.id === convId);
-    const a = S.runtime.active?.[convId] || {};
-    const bots = [a.botId, ...(a.delegates || [])].map(botById).filter(Boolean);
+    const a: Partial<ActiveRun> = S.runtime.active?.[convId] || {};
+    const bots = [a.botId, ...(a.delegates || [])].map(botById).filter((b): b is Bot => Boolean(b));
     const waiting = S.runtime.pending.filter((p) => p.convId === convId);
     const st = waiting.length ? '승인 대기' : a.phase === 'working' ? '도구 실행 중' : '생각 중';
     return h('div', { class: 'task-row' }, bots[0] ? avatar(bots[0], 28) : null,
@@ -1124,24 +1183,24 @@ function renderTasks() {
   });
   const done = (S.runtime.history || []).map((r) => {
     const c = S.convs.find((x) => x.id === r.convId);
-    const bots = r.botIds.map(botById).filter(Boolean);
+    const bots = r.botIds.map(botById).filter((b): b is Bot => Boolean(b));
     return h('div', { class: 'task-row' }, bots[0] ? avatar(bots[0], 28) : null,
       h('div', { class: 'grow' }, h('div', {}, bots.map((b) => b.name).join(', ') || 'Bot', h('span', { class: 'muted' }, ` · ${c ? convTitle(c) : '삭제된 대화'}`)),
         h('div', { class: 'muted small' }, `${r.stopped ? '중지됨' : r.ok ? '완료' : '오류'} · ${ago(r.end - r.start)} 걸림 · ${ago(now - r.end)} 전${r.initiator === 'routine' ? ' · 루틴' : r.initiator === 'bot' ? ' · Bot 요청' : ''}`)),
       c ? h('button', { class: 'btn ghost', onclick: open(r.convId) }, '열기') : null);
   });
-  fill(ui.tasksBody,
+  fill(body,
     h('div', { class: 'section-title' }, `실행 중 ${running.length}`), running.length ? running : h('div', { class: 'muted small' }, '지금 실행 중인 작업이 없어요'),
     h('div', { class: 'section-title' }, '최근 작업'), done.length ? done : h('div', { class: 'muted small' }, '이번 실행에서 끝난 작업이 없어요'));
 }
 
 // "Bot 설정": role, model, skills and apps for one bot.
-function openConfigure(bot, c) {
+function openConfigure(bot: Bot) {
   const prompt = h('textarea', { class: 'field', style: 'min-height:150px', value: bot.systemPrompt });
   const model = h('select', { class: 'select' }, modelOptions(S.models, `기본값 (${modelName(S.models, S.settings.model)})`).map(([v, l]) => h('option', { value: v, selected: bot.model === v ? true : null }, l)));
   const skillIds = new Set(bot.skillIds);
   const serverIds = new Set(bot.serverIds);
-  const switchRow = (label, set, id, extra = null) => h('label', { class: 'row', style: 'padding:6px 2px' }, extra, h('span', { class: 'grow' }, label), toggle(set.has(id), (v) => (v ? set.add(id) : set.delete(id))));
+  const switchRow = (label: string, set: Set<string>, id: string, extra: Child = null) => h('label', { class: 'row', style: 'padding:6px 2px' }, extra, h('span', { class: 'grow' }, label), toggle(set.has(id), (v) => (v ? set.add(id) : set.delete(id))));
   const skills = S.skills.filter((s) => !s.disabled);
   let drafts = bot.drafts !== false;
   openModal(dialog(`${bot.name} 설정`, [
@@ -1162,7 +1221,7 @@ function openConfigure(bot, c) {
 
 // ---------- wiring ----------
 
-function select(id, remember = true) {
+function select(id: string | null | undefined, remember = true): void {
   if (!id) return;
   if (remember && id !== ui.convId) {
     ui.history.list = [...ui.history.list.slice(0, ui.history.index + 1), id];
@@ -1176,7 +1235,7 @@ function select(id, remember = true) {
 }
 
 function render(force = false) {
-  if (!S.convs.some((c) => c.id === ui.convId)) ui.convId = [...S.convs].sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id;
+  if (!S.convs.some((c) => c.id === ui.convId)) ui.convId = [...S.convs].sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id ?? null;
   // Reading the open chat (window focused) marks it read, unless the user just marked it unread.
   const open = S.convs.find((c) => c.id === ui.convId);
   if (open?.unread && ui.keepUnread !== open.id && document.hasFocus()) act('updateConv', open.id, { unread: false });
@@ -1196,15 +1255,16 @@ function render(force = false) {
 }
 
 // Live tokens patch the streaming bubble without rebuilding the thread.
-const pendingStream = new Map();
-window.desktop.onStream(({ convId, msgId, text }) => {
+const pendingStream = new Map<string, Message>();
+window.desktop.onStream(({ convId, msgId, text }: StreamChunk) => {
   const m = S?.convs.find((c) => c.id === convId)?.messages.find((x) => x.id === msgId);
   if (!m) return;
   m.content += text;
-  streamAt.set(m.botId, Date.now());
-  restyle(m.botId);
-  clearTimeout(streamIdle.get(m.botId));
-  streamIdle.set(m.botId, setTimeout(() => restyle(m.botId), 1000));
+  const botId = m.botId || '';
+  streamAt.set(botId, Date.now());
+  restyle(botId);
+  clearTimeout(streamIdle.get(botId));
+  streamIdle.set(botId, setTimeout(() => restyle(botId), 1000));
   if (convId !== ui.convId) return;
   pendingStream.set(msgId, m);
   requestAnimationFrame(() => {
@@ -1223,9 +1283,9 @@ window.desktop.onStream(({ convId, msgId, text }) => {
 
 // ---------- animated avatars ----------
 
-const streamAt = new Map(); // botId -> last streamed text time
-const finishedAt = new Map(); // botId -> when its run ended
-function botState(botId) {
+const streamAt = new Map<string, number>(); // botId -> last streamed text time
+const finishedAt = new Map<string, number>(); // botId -> when its run ended
+function botState(botId: string): string {
   if (!S) return 'idle';
   for (const convId of S.runtime.running) {
     const a = S.runtime.active?.[convId];
@@ -1238,15 +1298,15 @@ function botState(botId) {
 }
 setAvatarState(botState);
 // Updates avatars in place (no re-render) when a bot's state changes between broadcasts.
-function restyle(botId) {
+function restyle(botId: string) {
   const st = botState(botId);
-  for (const el of document.querySelectorAll(`.avatar[data-bot="${botId}"]`)) {
+  for (const el of document.querySelectorAll<HTMLElement>(`.avatar[data-bot="${botId}"]`)) {
     if (el.dataset.st === st) continue;
     el.dataset.st = st;
-    el.querySelector('.av-look')?.style.removeProperty('transform');
+    el.querySelector<HTMLElement>('.av-look')?.style.removeProperty('transform');
   }
 }
-const streamIdle = new Map();
+const streamIdle = new Map<string, ReturnType<typeof setTimeout>>();
 
 window.addEventListener('focus', () => S && render());
 window.desktop.onState((state) => {
@@ -1264,7 +1324,7 @@ window.desktop.onState((state) => {
 
 // Pictures in the chat open full screen.
 document.addEventListener('click', (e) => {
-  const img = e.target.closest('img.thumb, .msg.bot img');
+  const img = (e.target as Element).closest<HTMLImageElement>('img.thumb, .msg.bot img');
   if (img && !img.closest('.viewer')) openViewer({ kind: 'image', name: img.alt || '이미지', dataUrl: img.src });
 });
 
@@ -1275,7 +1335,7 @@ refreshUsage();
 
 // ---------- command palette and shortcuts (same keys as Grok Bot) ----------
 
-const SHORTCUTS = [
+const SHORTCUTS: [string, string, () => void][] = [
   ['⌘K', '이동 및 명령', () => openPalette()],
   ['⌘N', '새 Bot', () => openNewBot()],
   ['⌘,', '설정', () => openSettings()],
@@ -1289,15 +1349,15 @@ const SHORTCUTS = [
   ['⌘[', '뒤로', () => travel(-1)],
   ['⌘]', '앞으로', () => travel(1)],
 ];
-const KEYMAP = { k: '⌘K', n: '⌘N', ',': '⌘,', 'shift+m': '⇧⌘M', 'shift+w': '⇧⌘W', 'shift+f': '⇧⌘F', i: '⌘I', b: '⌘B', '[': '⌘[', ']': '⌘]' };
+const KEYMAP: Record<string, string> = { k: '⌘K', n: '⌘N', ',': '⌘,', 'shift+m': '⇧⌘M', 'shift+w': '⇧⌘W', 'shift+f': '⇧⌘F', i: '⌘I', b: '⌘B', '[': '⌘[', ']': '⌘]' };
 
-function step(dir) {
+function step(dir: number) {
   const list = [...S.convs].sort((a, b) => b.updatedAt - a.updatedAt);
   const i = list.findIndex((c) => c.id === ui.convId);
   select(list[(i + dir + list.length) % list.length]?.id);
 }
 
-function travel(dir) {
+function travel(dir: number) {
   const i = ui.history.index + dir;
   if (i < 0 || i >= ui.history.list.length) return;
   ui.history.index = i;
@@ -1311,32 +1371,33 @@ function openShortcuts() {
 function openPalette() {
   const c = conv();
   const settingsTabs = SETTINGS_TABS.map(([k, label, ic]) => ({ icon: ic, label: `설정: ${label}`, sub: '설정', run: () => openSettings(k) }));
-  const commands = [
+  type PaletteItem = { label: string; run: () => void; icon?: string; sub?: string; key?: string; conv?: Conv };
+  const commands: PaletteItem[] = [
     { icon: 'plus', label: '새 Bot', run: openNewBot },
     { icon: 'users', label: '그룹 채팅 만들기', run: openNewMessage },
     { icon: 'keyboard', label: '키보드 단축키', sub: '도움말', run: openShortcuts },
     ...(c?.kind === 'group' ? [{ icon: 'users', label: '멤버', sub: '현재 채팅', run: () => { ui.panelOpen = true; ui.tab = 'members'; render(true); } }] : []),
     { icon: 'apps', label: '앱 연결', key: '⇧⌘M', run: () => openApps() },
-    ...[['system', '시스템 설정 따르기'], ['light', '라이트 모드'], ['dark', '다크 모드']].map(([v, label]) => ({
+    ...([['system', '시스템 설정 따르기'], ['light', '라이트 모드'], ['dark', '다크 모드']] as const).map(([v, label]) => ({
       icon: v === 'dark' ? 'moon' : v === 'light' ? 'sun' : 'monitor', label: `테마: ${label}`, sub: S.settings.theme === v ? '사용 중' : '외관', run: () => act('updateSettings', { theme: v }) })),
     ...settingsTabs,
   ];
-  const subtitle = (x) => {
-    if (x.kind === 'group') return x.botIds.map(botById).filter(Boolean).map((b) => b.name).join(', ') || '그룹 채팅';
+  const subtitle = (x: Conv) => {
+    if (x.kind === 'group') return x.botIds.map(botById).filter((b): b is Bot => Boolean(b)).map((b) => b.name).join(', ') || '그룹 채팅';
     const b = botById(x.botIds[0]);
     return b?.systemPrompt?.trim().split('\n')[0] || 'Bot';
   };
-  const chats = [...S.convs].sort((a, b) => b.updatedAt - a.updatedAt).map((x) => ({ conv: x, label: convTitle(x), sub: subtitle(x), run: () => select(x.id) }));
+  const chats: PaletteItem[] = [...S.convs].sort((a, b) => b.updatedAt - a.updatedAt).map((x) => ({ conv: x, label: convTitle(x), sub: subtitle(x), run: () => select(x.id) }));
   let sel = 0;
-  let shown = [];
+  let shown: PaletteItem[] = [];
   const list = h('div', { class: 'pal-list' });
   const field = h('input', { placeholder: '검색', oninput: () => { sel = 0; draw(); } });
-  const run = (item) => { closeModal(); item.run(); };
+  const run = (item: PaletteItem) => { closeModal(); item.run(); };
   const draw = () => {
     const q = field.value.trim().toLowerCase();
     shown = [...chats, ...commands].filter((it) => !q || `${it.label} ${it.sub || ''}`.toLowerCase().includes(q));
     fill(list, ...shown.map((it, i) => h('button', { class: `pal-item${i === sel ? ' sel' : ''}`, onmousemove: () => { if (sel !== i) { sel = i; draw(); } }, onclick: () => run(it) },
-      it.conv ? convAvatar(it.conv, 32) : h('span', { class: 'ic' }, icon(it.icon, 17)),
+      it.conv ? convAvatar(it.conv, 32) : h('span', { class: 'ic' }, icon(it.icon || '', 17)),
       h('div', { class: 'grow' }, h('div', { class: 'ellipsis' }, it.label), it.sub ? h('div', { class: 'sub ellipsis' }, it.sub) : null),
       i < 9 ? h('span', { class: 'pal-key' }, `⌘${i + 1}`) : it.key ? h('span', { class: 'pal-key' }, it.key) : null)));
     list.children[sel]?.scrollIntoView({ block: 'nearest' });
@@ -1345,7 +1406,7 @@ function openPalette() {
     if (e.isComposing) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); sel = (sel + (e.key === 'ArrowDown' ? 1 : shown.length - 1)) % shown.length; draw(); }
     if (e.key === 'Enter' && shown[sel]) run(shown[sel]);
-    if (e.metaKey && /^[1-9]$/.test(e.key) && shown[e.key - 1]) { e.preventDefault(); run(shown[e.key - 1]); }
+    if (e.metaKey && /^[1-9]$/.test(e.key) && shown[Number(e.key) - 1]) { e.preventDefault(); run(shown[Number(e.key) - 1]); }
   };
   openModal(h('div', { class: 'modal palette' }, h('label', { class: 'pal-search' }, icon('search', 17), field), list));
   draw();

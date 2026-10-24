@@ -1,10 +1,25 @@
 // "앱 연결": a catalog of MCP servers and skills, plus custom MCP and plugins.
-import { h, fill, $, act, icon, openModal, closeModal, toast, popover } from './ui.js';
-import { LOGOS } from './logos.js';
+import type { Broadcast, McpServer, McpStatus, Skill } from '../shared/types';
+import { h, fill, $, act, icon, openModal, closeModal, toast, popover, type Child } from './ui';
+import { LOGOS } from './logos';
+
+interface CatalogItem {
+  name: string;
+  title: string;
+  desc: string;
+  cat: string;
+  color?: string;
+  logo?: string;
+  rec?: boolean;
+  secret?: string;
+  cfg: Partial<McpServer>;
+}
+type Tile = { name?: string; title?: string; color?: string; logo?: string };
+type Page = () => [Child, Child];
 
 // cfg.url: remote server; it signs in through the browser (OAuth) only if it asks to.
 // secret: a token the user pastes. cfg.command: runs locally with no account.
-const CATALOG = [
+const CATALOG: CatalogItem[] = [
   { name: 'gmail', title: 'Gmail', desc: 'Search, read and draft emails in your Gmail inbox.', cat: '커뮤니케이션', rec: true, cfg: { url: 'https://gmailmcp.googleapis.com/mcp/v1' } },
   { name: 'google-calendar', title: 'Google Calendar', desc: 'See your schedule, events and free time.', cat: '생산성', rec: true, cfg: { url: 'https://calendarmcp.googleapis.com/mcp/v1' } },
   { name: 'google-drive', title: 'Google Drive', desc: 'Find and read files in your Drive.', cat: '생산성', cfg: { url: 'https://drivemcp.googleapis.com/mcp/v1' } },
@@ -60,25 +75,25 @@ const CATALOG = [
 const MAIN_CATS = ['생산성', '커뮤니케이션', '디자인', '코드'];
 const MORE_CATS = ['데이터·분석', '영업·지원', '결제·커머스', '웹·리서치', '스킬', '사용자 지정'];
 
-let S = null;
-let view = null; // null while closed; 'catalog' | 'connected' | a function returning [head, body]
+let S: Broadcast;
+let view: 'catalog' | 'connected' | Page | null = null; // null while closed; 'catalog' | 'connected' | a function returning [head, body]
 let cat = '전체';
 let query = '';
 
-const catalogOf = (server) => CATALOG.find((c) => c.name === server.name);
+const catalogOf = (server: McpServer) => CATALOG.find((c) => c.name === server.name);
 
 // The service's own icon on a white tile, or the first letter on a color.
-export function appTile(item, size = 50) {
-  const src = LOGOS[item?.logo || item?.name];
+export function appTile(item: Tile | null | undefined, size = 50): HTMLElement {
+  const src = LOGOS[item?.logo || item?.name || ''];
   const style = `width:${size}px;height:${size}px;border-radius:${Math.round(size * 0.26)}px`;
   const glyph = Math.round(size * 0.62);
   if (src) return h('div', { class: 'tile logo', style }, h('img', { src, width: glyph, height: glyph, alt: '' }));
   const title = item?.title || item?.name || '?';
   return h('div', { class: 'tile', style: `${style};background:${item?.color || '#8b8b8b'};font-size:${Math.round(size * 0.42)}px` }, title[0].toUpperCase());
 }
-export const serverTile = (server, size) => appTile(catalogOf(server) || { name: server.name }, size);
+export const serverTile = (server: McpServer, size?: number): HTMLElement => appTile(catalogOf(server) || { name: server.name }, size);
 
-export function openApps(which = 'catalog') {
+export function openApps(which: 'catalog' | 'connected' = 'catalog'): void {
   view = which;
   cat = '전체';
   query = '';
@@ -86,38 +101,39 @@ export function openApps(which = 'catalog') {
   draw();
 }
 
-export function renderApps(state) {
+export function renderApps(state: Broadcast): void {
   S = state;
   if (view && $('#overlay .apps') && !$('#overlay .apps').contains(document.activeElement)) draw();
 }
 
-const statusOf = (server) => S.mcpStatus[server.id]?.status;
-const needsLogin = (server) => statusOf(server) === 'auth';
+const statusOf = (server: McpServer) => S.mcpStatus[server.id]?.status;
+const needsLogin = (server: McpServer) => statusOf(server) === 'auth';
 
 // Grok Bot's flow: add, try without a token, open the browser only if the app asks.
-async function connect(serverId, item) {
+async function connect(serverId: string, item?: CatalogItem) {
   toast('연결하는 중…');
   const res = await act('connectApp', serverId);
   if (res?.needsClient === 'google') { toast('Google 클라이언트를 한 번만 등록해 주세요'); return subPage(() => googlePage(item || {})); }
   if (res?.connected) toast('연결했어요');
 }
 
-async function addCatalog(item) {
-  if (item.secret && !S.secretNames.includes(item.secret)) return subPage(() => secretPage(item));
+async function addCatalog(item: CatalogItem): Promise<void> {
+  const { secret } = item;
+  if (secret && !S.secretNames.includes(secret)) return subPage(() => secretPage({ ...item, secret }));
   const existing = S.mcpServers.find((s) => s.name === item.name);
   const id = existing?.id || await act('addMcpServer', { name: item.name, ...item.cfg });
   if (id) connect(id, item);
 }
 
-function subPage(render) {
+function subPage(render: Page) {
   view = render;
   draw();
 }
 const back = () => { view = 'catalog'; draw(); };
 const backBtn = () => h('button', { class: 'circle-btn', onclick: back }, h('span', { style: 'transform:rotate(180deg);display:inline-grid' }, icon('chevron', 16)));
-const pageHead = (item, title) => h('div', { class: 'apps-title' }, h('div', { class: 'row' }, backBtn(), appTile(item, 32), h('h2', {}, title)));
+const pageHead = (item: Tile, title: string) => h('div', { class: 'apps-title' }, h('div', { class: 'row' }, backBtn(), appTile(item, 32), h('h2', {}, title)));
 
-function secretPage(item) {
+function secretPage(item: CatalogItem & { secret: string }): [Child, Child] {
   const input = h('input', { class: 'field', type: 'password', placeholder: item.secret });
   setTimeout(() => input.focus());
   return [pageHead(item, `${item.title} 연결`), [
@@ -136,14 +152,14 @@ function secretPage(item) {
 
 // Google's MCP servers only accept pre-registered OAuth clients. Grok Bot ships
 // its own; here the user brings one, once, and every Google app reuses it.
-function googlePage(item) {
+function googlePage(item: Partial<CatalogItem>): [Child, Child] {
   const id = h('input', { class: 'field', placeholder: '클라이언트 ID (….apps.googleusercontent.com)' });
   const secret = h('input', { class: 'field', type: 'password', placeholder: '클라이언트 보안 비밀번호' });
-  const copy = (text) => h('button', { class: 'copy', title: '복사', onclick: () => { navigator.clipboard.writeText(text); toast('복사했어요'); } }, h('code', {}, text));
-  const done = async (ok) => {
+  const copy = (text: string) => h('button', { class: 'copy', title: '복사', onclick: () => { navigator.clipboard.writeText(text); toast('복사했어요'); } }, h('code', {}, text));
+  const done = async (ok: boolean | undefined) => {
     if (!ok) return;
     back();
-    if (item.name) addCatalog(item);
+    if (item.name) addCatalog(item as CatalogItem);
   };
   return [pageHead(item, 'Google 계정 연결'), [
     h('p', { class: 'muted small' }, 'Google 앱은 미리 등록된 OAuth 클라이언트로만 로그인할 수 있어요. 한 번만 등록하면 Gmail, 캘린더, 드라이브 등 모든 Google 앱이 "추가" 한 번으로 연결돼요.'),
@@ -158,35 +174,35 @@ function googlePage(item) {
   ]];
 }
 
-function appItem({ tile, title, desc, added, onAdd, addLabel = '추가' }) {
+function appItem({ tile, title, desc, added = false, onAdd, addLabel = '추가' }: { tile: Node; title: string; desc: string; added?: boolean; onAdd?: () => void; addLabel?: string }) {
   return h('div', { class: 'app-item' },
     tile,
     h('div', { class: 'meta' }, h('div', { class: 'title ellipsis' }, title), h('div', { class: 'desc ellipsis' }, desc)),
     added ? h('span', { class: 'added' }, icon('check', 14), '추가됨') : h('button', { class: 'add-btn', onclick: onAdd }, addLabel));
 }
 
-function catalogItems(list) {
+function catalogItems(list: CatalogItem[]) {
   return h('div', { class: 'app-grid' }, list.map((item) => {
     const server = S.mcpServers.find((s) => s.name === item.name);
     return appItem({
       tile: appTile(item), title: item.title, desc: item.desc,
-      added: server && !needsLogin(server),
+      added: Boolean(server && !needsLogin(server)),
       addLabel: server ? '로그인' : '추가',
       onAdd: () => addCatalog(item),
     });
   }));
 }
 
-const iconTile = (name) => h('div', { class: 'tile logo', style: 'width:50px;height:50px;border-radius:13px' }, icon(name, 24));
+const iconTile = (name: string) => h('div', { class: 'tile logo', style: 'width:50px;height:50px;border-radius:13px' }, icon(name, 24));
 
-function skillItems(list) {
+function skillItems(list: Skill[]) {
   return h('div', { class: 'app-grid' }, list.map((s) => appItem({ tile: iconTile('sparkle'), title: s.name, desc: s.description || '스킬', added: true })));
 }
 
-function drawCatalog(head, body) {
+function drawCatalog(head: Element, body: Element) {
   const search = h('input', { placeholder: '앱 및 스킬 전체 검색', value: query, oninput: (e) => { query = e.target.value; drawCatalogBody(body); } });
   const enabled = S.mcpServers.filter((s) => s.enabled);
-  const more = h('button', { class: `cat${MORE_CATS.includes(cat) ? ' active' : ''}`, onclick: () => popover(more, MORE_CATS.map((c) => ({ label: c, onclick: () => { cat = c; draw(); } }))) },
+  const more: HTMLElement = h('button', { class: `cat${MORE_CATS.includes(cat) ? ' active' : ''}`, onclick: () => popover(more, MORE_CATS.map((c) => ({ label: c, onclick: () => { cat = c; draw(); } }))) },
     MORE_CATS.includes(cat) ? cat : '더보기', icon('down', 14));
   fill(head,
     h('div', { class: 'apps-title' },
@@ -203,12 +219,12 @@ function drawCatalog(head, body) {
   drawCatalogBody(body);
 }
 
-function drawCatalogBody(body) {
+function drawCatalogBody(body: Element): void {
   const q = query.trim().toLowerCase();
-  const match = (...fields) => !q || fields.some((f) => f?.toLowerCase().includes(q));
+  const match = (...fields: (string | undefined)[]) => !q || fields.some((f) => f?.toLowerCase().includes(q));
   const apps = CATALOG.filter((c) => match(c.title, c.desc, c.name));
   const skills = S.skills.filter((s) => !s.disabled && match(s.name, s.description));
-  const section = (title, content, more) => [h('h3', {}, title, more ? h('button', { onclick: () => { cat = more; draw(); } }, '모두 보기') : null), content];
+  const section = (title: string, content: Child, more?: string): Child[] => [h('h3', {}, title, more ? h('button', { onclick: () => { cat = more; draw(); } }, '모두 보기') : null), content];
 
   if (cat === '사용자 지정') return fill(body, ...customView());
   if (cat === '스킬') return fill(body, ...section('스킬', skills.length ? skillItems(skills) : h('p', { class: 'muted small' }, '설정 › 스킬에서 스킬을 만들거나 플러그인으로 설치하세요.')));
@@ -237,18 +253,18 @@ function customView() {
   ];
 }
 
-function statusText(st) {
+function statusText(st: McpStatus): string {
   if (st.status === 'auth') return '로그인이 필요해요';
   if (st.status === 'error') return `오류: ${st.error}`;
   if (st.status === 'connected') return `도구 ${st.tools.length}개 · ${st.tools.slice(0, 6).join(', ')}`;
   return st.status === 'off' ? '꺼짐' : '연결 확인 중…';
 }
 
-function drawConnected(head, body) {
+function drawConnected(head: Element, body: Element) {
   fill(head, h('div', { class: 'apps-title' }, h('div', { class: 'row' }, backBtn(), h('h2', {}, '연결된 앱'))));
   fill(body,
     h('div', { class: 'list' }, S.mcpServers.length ? S.mcpServers.map((s) => {
-      const st = S.mcpStatus[s.id] || { status: s.enabled ? 'connecting' : 'off', tools: [] };
+      const st: McpStatus = S.mcpStatus[s.id] || { status: s.enabled ? 'connecting' : 'off', tools: [] };
       const plugin = S.plugins.find((p) => p.id === s.source);
       return h('div', {},
         h('div', { class: 'row' }, serverTile(s, 36),
@@ -270,11 +286,11 @@ function drawConnected(head, body) {
 const frame = () => [h('button', { class: 'close', onclick: closeModal }, icon('close', 20)), h('div', { class: 'apps-head' }), h('div', { class: 'apps-body' })];
 
 function draw() {
-  const root = $('#overlay .apps');
+  const root = document.querySelector<HTMLElement>('#overlay .apps');
   if (!root) return;
   if (!root.querySelector('.apps-body')) fill(root, ...frame());
-  const head = root.querySelector('.apps-head');
-  const body = root.querySelector('.apps-body');
+  const head = $('#overlay .apps-head');
+  const body = $('#overlay .apps-body');
   if (typeof view === 'function') {
     // Sub-pages hold typed input; only draw them once.
     if (root.dataset.page === String(view)) return;

@@ -8,9 +8,11 @@
 
 Claude Bots run on the Claude Agent SDK with your Claude login. ChatGPT Bots and image generation run on the Codex SDK with your ChatGPT login. No API keys, no server, no database: one desktop app, and everything stays on your machine.
 
-[**Download**](https://github.com/SUNGMYEONGGI/CharacterBot/releases) · [**Quick start**](#quick-start) · [**Features**](#features) · [**Architecture**](#architecture) · [**Security model**](#security-model) · [**Build and release**](#build-and-release)
+[**Website**](https://sungmyeonggi.github.io/CharacterBot/) · [**Download**](https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest/download/CharacterBot-arm64.dmg) · [**Quick start**](#quick-start) · [**Features**](#features) · [**Architecture**](#architecture) · [**Security model**](#security-model) · [**Build and release**](#build-and-release)
 
-[![CI](https://github.com/SUNGMYEONGGI/CharacterBot/actions/workflows/ci.yml/badge.svg)](https://github.com/SUNGMYEONGGI/CharacterBot/actions/workflows/ci.yml)
+[![Release](https://github.com/SUNGMYEONGGI/CharacterBot/actions/workflows/release.yml/badge.svg)](https://github.com/SUNGMYEONGGI/CharacterBot/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/SUNGMYEONGGI/CharacterBot)](https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](./LICENSE)
 ![Platform: macOS arm64](https://img.shields.io/badge/platform-macOS%20arm64-lightgrey.svg)
 ![Alpha](https://img.shields.io/badge/status-alpha-orange.svg)
@@ -62,7 +64,7 @@ Both engines see the same app tools (`ask_user`, `remember`, `message_bot`, ...)
 
 ### From a release
 
-1. Download `CharacterBot-<version>-arm64.dmg` from [Releases](https://github.com/SUNGMYEONGGI/CharacterBot/releases).
+1. Download [`CharacterBot-arm64.dmg`](https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest/download/CharacterBot-arm64.dmg), the latest release (or pick one from [Releases](https://github.com/SUNGMYEONGGI/CharacterBot/releases)).
 2. Drag **CharacterBot** to Applications.
 3. Builds without a Developer ID signature are ad-hoc signed, so Gatekeeper stops the first launch. Right-click the app › **Open**, or run:
 
@@ -76,7 +78,7 @@ Both engines see the same app tools (`ask_user`, `remember`, `message_bot`, ...)
 git clone https://github.com/SUNGMYEONGGI/CharacterBot.git
 cd CharacterBot
 npm install
-npm start
+npm start      # builds into out/ and launches Electron
 ```
 
 The app picks up your Claude Code login on first launch. If it does not, open 설정 (`⌘,`) › 일반 and sign in to Claude there.
@@ -206,44 +208,52 @@ Settings worth knowing:
 ```
 ┌──────────────────────────── Electron main process ────────────────────────────┐
 │                                                                                │
-│  main.cjs ── actions, Bot turns, delegation, notifications, broadcast          │
+│  main.ts ── actions, Bot turns, delegation, notifications, broadcast           │
 │     │                                                                          │
-│     ├── store.cjs ........ state.json (+ secrets.bin via safeStorage)          │
-│     ├── gateway.cjs ...... allow / ask / deny, account-write block, audit      │
-│     ├── routines.cjs ..... schedules and limits                                │
-│     ├── triggers.cjs ..... webhook server :47819, folder watch, gh polling     │
-│     ├── transcript.cjs ... chat history to prompt                              │
+│     ├── store.ts ......... state.json (+ secrets.bin via safeStorage)          │
+│     ├── gateway.ts ....... allow / ask / deny, account-write block, audit      │
+│     ├── routines.ts ...... schedules and limits                                │
+│     ├── triggers.ts ...... webhook server :47819, folder watch, gh polling     │
+│     ├── transcript.ts .... chat history to prompt                              │
 │     │                                                                          │
-│     ├── agent.cjs ──── Claude Agent SDK ──── PreToolUse hook ──▶ gateway       │
-│     │                       └── in-process MCP: tools.cjs                      │
-│     ├── imagegen.cjs ── Codex SDK ─────── loopback HTTP MCP: tools.cjs         │
+│     ├── agent.ts ───── Claude Agent SDK ──── PreToolUse hook ──▶ gateway       │
+│     │                       └── in-process MCP: tools.ts                       │
+│     ├── imagegen.ts ─── Codex SDK ─────── loopback HTTP MCP: tools.ts          │
 │     │                                                                          │
-│     └── mcp.cjs, oauth.cjs, plugins.cjs ... outside apps                       │
+│     └── mcp.ts, oauth.ts, plugins.ts ... outside apps                          │
 │                                                                                │
 └──────────────────────────────────────▲─────────────────────────────────────────┘
-                                       │ preload.cjs: window.desktop
+                                       │ preload.ts: window.desktop
                                        │ init() · act(name, ...args) · onState · onStream
 ┌──────────────────────────────────────┴───────── Renderer ──────────────────────┐
-│  app.js (sidebar, chat, threads, panels) · settings.js · apps.js               │
-│  rich.js (Markdown, Mermaid, KaTeX, CSV) · ui.js (elements, icons, popovers)   │
+│  app.ts (sidebar, chat, threads, panels) · settings.ts · apps.ts               │
+│  rich.ts (Markdown, Mermaid, KaTeX, CSV) · ui.ts (elements, icons, popovers)   │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-| File | Purpose |
+The code is TypeScript in strict mode. `tsc` only type-checks; [esbuild](https://esbuild.github.io) bundles each process into `out/` (`scripts/build.mjs`).
+
+| Path | Purpose |
 | --- | --- |
-| `main.cjs` | App state and every renderer action, Bot turns, delegation, summaries, routines, notifications. |
-| `agent.cjs` | One Claude turn on the Agent SDK; Haiku summaries. |
-| `imagegen.cjs` | One Codex turn; image and profile icon generation; Codex login status. |
-| `tools.cjs` | The app's tools as an in-process MCP server and as a per-turn loopback HTTP MCP server. |
-| `gateway.cjs` | Rule matching, default effects, the account-write check. |
-| `routines.cjs` | Schedule validation, next run, limits. |
-| `triggers.cjs` | Webhook, folder and GitHub triggers. |
-| `providers.cjs` | Claude login, API key and custom endpoint providers. |
-| `mcp.cjs`, `oauth.cjs`, `plugins.cjs` | Outside MCP servers, their OAuth sign-in, plugins. |
-| `transcript.cjs` | Turns a chat (DM, group, thread) into the next prompt. |
-| `store.cjs` | Default state and migrations. |
-| `stt.swift` | On-device speech recognition. |
-| `preload.cjs` | The bridge: `init`, `act`, `onState`, `onStream`. |
+| `src/main/main.ts` | App state and every renderer action (`Actions`), Bot turns, delegation, summaries, routines, notifications. |
+| `src/main/agent.ts` | One Claude turn on the Agent SDK; Haiku summaries; plan usage and model list. |
+| `src/main/imagegen.ts` | One Codex turn; image and profile icon generation; Codex login status and usage. |
+| `src/main/tools.ts` | The app's tools as an in-process MCP server and as a per-turn loopback HTTP MCP server. |
+| `src/main/gateway.ts` | Rule matching, default effects, the account-write check. |
+| `src/main/routines.ts` | Schedule validation, next run, limits. |
+| `src/main/triggers.ts` | Webhook, folder and GitHub triggers. |
+| `src/main/providers.ts` | Claude login, API key and custom endpoint providers. |
+| `src/main/mcp.ts`, `oauth.ts`, `plugins.ts` | Outside MCP servers, their OAuth sign-in, plugins. |
+| `src/main/transcript.ts` | Turns a chat (DM, group, thread) into the next prompt. |
+| `src/main/store.ts` | Default state and migrations. |
+| `src/main/stt.swift` | On-device speech recognition. |
+| `src/preload/preload.ts` | The bridge: `init`, `act`, `onState`, `onStream`. |
+| `src/renderer/` | The UI: `app.ts`, `settings.ts`, `apps.ts`, `rich.ts`, `ui.ts`, `index.html`, `styles.css`. |
+| `src/shared/types.ts` | Types both processes share: `Bot`, `Conv`, `Message`, `Settings`, `Broadcast`, `DesktopApi`. |
+| `test/main.test.ts` | Unit tests for the gateway, routines, store, tools, transcript, providers, MCP config and plugins. |
+| `site/` | The landing page at [sungmyeonggi.github.io/CharacterBot](https://sungmyeonggi.github.io/CharacterBot/). |
+
+The bridge is typed end to end: `act` takes an action name from `Actions` (`typeof actions` in `main.ts`), checks its arguments against that action's parameters and resolves to its return type, so a renamed action or a changed signature fails `npm run typecheck` in the renderer.
 
 The renderer never touches Node. It calls `act(name, ...args)`; the main process runs the action and broadcasts the new state, and streams tokens over `onStream`.
 
@@ -252,8 +262,10 @@ The renderer never touches Node. It calls `act(name, ...args)`; the main process
 Builds use [electron-builder](https://www.electron.build); the configuration is the `build` field in `package.json`.
 
 ```sh
-npm test       # unit tests
-npm run dist   # dist/CharacterBot-<version>-arm64.dmg and -mac.zip
+npm run typecheck  # tsc, no output files
+npm test           # unit tests (tsx)
+npm run build      # esbuild: out/main.cjs, out/preload.cjs, out/renderer/
+npm run dist       # build, then dist/CharacterBot-arm64.dmg and CharacterBot-<version>-arm64-mac.zip
 ```
 
 | Item | Value |
@@ -261,17 +273,29 @@ npm run dist   # dist/CharacterBot-<version>-arm64.dmg and -mac.zip
 | App ID | `com.sungmyeonggi.characterbot` |
 | Targets | `dmg`, `zip`, arm64 |
 | Icon | `build/icon.icns`, made from `build/source.png` |
-| Unpacked from asar | the Claude Code binary, the Codex binary, `stt.swift`, so they can run |
+| Packaged files | `out/**` (without source maps) and `package.json`; Node dependencies of the main process from `node_modules` |
+| Unpacked from asar | the Claude Code binary, the Codex binary, `out/stt.swift`, so they can run |
 | Signing | Developer ID when `CSC_LINK` is set; otherwise `build/adhoc-sign.cjs` signs ad hoc so Apple Silicon will run it |
 | Entitlements | `build/entitlements.mac.plist`: JIT, unsigned executable memory, library validation off, microphone |
 
 ### Releasing
 
-Push a `v*` tag and `.github/workflows/release.yml` builds on `macos-14`, runs the tests, and uploads the `.dmg` and `.zip` to a draft GitHub Release.
+Releases are continuous. Every push to `main` that changes the app runs `.github/workflows/release.yml` on `macos-14`:
+
+1. type-check, test and build,
+2. set the version to `<major>.<minor>.<run number>` from `package.json` (for example `0.1.7`), so you never bump it by hand,
+3. package the `.dmg` and `.zip`,
+4. publish them as GitHub Release `v<version>` with notes generated from the commits, marked latest.
+
+The download button on the website and in this README links to `releases/latest/download/CharacterBot-arm64.dmg`, so it always serves the newest build. Changes to `site/` or Markdown files alone don't cut a release. To start a new minor line, change `version` in `package.json` (for example to `0.2.0`). You can also run the workflow by hand from the Actions tab.
+
+### Website
+
+`site/` is a static page bundled by `scripts/build-site.mjs` (it reuses the app's avatar renderer from `src/renderer/ui.ts`). `.github/workflows/pages.yml` deploys it to GitHub Pages at <https://sungmyeonggi.github.io/CharacterBot/> whenever it changes. The page reads the latest release's version, date and size from the GitHub API, so a new release shows up without a redeploy.
 
 ```sh
-npm version patch        # 0.1.0 -> 0.1.1, commits and tags v0.1.1
-git push --follow-tags
+npm run site                      # _site/
+cd _site && python3 -m http.server
 ```
 
 For a signed and notarized build, add these repository secrets:
@@ -301,12 +325,13 @@ rsvg-convert -w 1024 -h 1024 icon.svg -o icon.png
 ## Development
 
 ```sh
-npm start                                     # run from source
-npx electron . --remote-debugging-port=9333  # with DevTools over CDP
+npm start                                                       # build and run from source
+npm run build && npx electron . --remote-debugging-port=9333   # with DevTools over CDP
+npm run typecheck
 npm test
 ```
 
-Main-process changes need a restart; renderer changes need a restart too, since ES modules are cached across `location.reload()`.
+Every change needs `npm run build` (which `npm start` runs) and a restart. Pull requests and branches other than `main` run `.github/workflows/ci.yml`: typecheck, tests, the app build and the site build.
 
 ## Limitations
 
@@ -335,7 +360,7 @@ Main-process changes need a restart; renderer changes need a restart too, since 
 - Open an issue before starting substantial work.
 - Keep changes focused, and update this README when setup, behavior or security changes.
 - Keep secrets, tokens and conversation data out of the repository.
-- Run `npm test` before opening a pull request.
+- Run `npm run typecheck` and `npm test` before opening a pull request.
 
 ## License
 

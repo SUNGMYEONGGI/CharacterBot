@@ -98,4 +98,4 @@ const BOT_ICON_PROMPT = `[목표]
 
 실제로 생성하거나 확인하지 않은 결과를 생성 완료 또는 검증 완료라고 설명하지 않는다.`;
 
-module.exports = { BOT_ICON_PROMPT };
+export { BOT_ICON_PROMPT };

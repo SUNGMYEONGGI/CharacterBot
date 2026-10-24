@@ -1,12 +1,12 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  push:
+    branches-ignore: [main] # main is checked by the release workflow
 
 jobs:
-  test:
+  check:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -15,4 +15,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run typecheck
       - run: npm test
+      - run: npm run build
+      - run: npm run site

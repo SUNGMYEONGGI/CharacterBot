@@ -1,10 +1,19 @@
 // Settings modal, laid out like Grok Bot's: a left nav and grouped cards.
-import { h, fill, $, act, icon, editing, openModal, closeModal, userAvatar, toggle, avatar, popover, toast, modelName, modelOptions } from './ui.js';
-import { LOGOS } from './logos.js';
+import type { Actions } from '../main/main';
+import type { Broadcast, Effect, Provider, Settings, Skill } from '../shared/types';
+import { h, fill, $, act, icon, editing, openModal, closeModal, userAvatar, toggle, avatar, popover, toast, modelName, modelOptions, type Child } from './ui';
+import { LOGOS } from './logos';
+
+type Tab = 'general' | 'computer' | 'usage' | 'update' | 'skills' | 'routines' | 'activity';
+type PlanUsage = Awaited<ReturnType<Actions['getUsage']>> | { error: true; available?: undefined; plan?: undefined; fiveHour?: undefined; sevenDay?: undefined; chatgpt?: undefined };
+// A provider row; ChatGPT shows here too although it is not a chat provider.
+type ProviderView = { id?: string; kind: Provider['kind'] | 'chatgpt'; name?: string; baseUrl?: string };
+type ModelItem = { value: string; label: string };
+type ModelGroup = { name: string; logo: Child; items: ModelItem[] };
 
 // Grok Bot's four tabs. Skills, routines and the activity log have no nav entry
 // (as in Grok Bot); they open from the command palette, Bot 설정 and 지원.
-export const SETTINGS_TABS = [
+export const SETTINGS_TABS: [Tab, string, string, boolean?][] = [
   ['general', '일반', 'gear'],
   ['computer', '컴퓨터', 'monitor'],
   ['usage', '사용량 및 청구', 'chart'],
@@ -14,15 +23,15 @@ export const SETTINGS_TABS = [
   ['activity', '활동 기록', 'list', true],
 ];
 
-let S = null;
-let tab = null; // null while closed
-let editingSkill = null;
-let providerForm = null; // kind of API provider being added
-let usage = null; // last fetched plan usage
-let host = null;
-let latestSdk = null;
+let S: Broadcast;
+let tab: Tab | null = null; // null while closed
+let editingSkill: Partial<Skill> | null = null;
+let providerForm: 'anthropic' | 'custom' | null = null; // kind of API provider being added
+let usage: PlanUsage | null = null; // last fetched plan usage
+let host: ReturnType<Actions['hostInfo']> | null = null;
+let latestSdk: string | null = null;
 
-export function openSettings(which = 'general') {
+export function openSettings(which: Tab = 'general'): void {
   // Open first: replacing an open settings modal runs its close callback (tab = null).
   openModal(h('div', { class: 'modal settings' },
     h('button', { class: 'close', onclick: closeModal }, icon('close', 20)),
@@ -31,62 +40,50 @@ export function openSettings(which = 'general') {
   tab = which;
   editingSkill = null;
   providerForm = null;
-  if (!host) act('hostInfo').then((info) => { host = info; draw(false); });
+  if (!host) act('hostInfo').then((info) => { host = info ?? null; draw(false); });
   draw(true);
 }
 
-export function renderSettings(state) {
+export function renderSettings(state: Broadcast): void {
   S = state;
   if (tab && $('#overlay .settings')) draw(false);
 }
 
 export const planUsage = () => usage;
-export function refreshUsage(onDone) {
+export function refreshUsage(onDone?: () => void): void {
   act('getUsage').then((u) => { usage = u || { error: true }; onDone?.(); if (tab) draw(false); });
 }
 
-function draw(force) {
+function draw(force: boolean): void {
   const content = $('#overlay .settings .content');
   if (!content) return;
   fill($('#overlay .settings nav'), ...SETTINGS_TABS.filter(([k, , , hidden]) => !hidden || k === tab).map(([k, label, ic]) =>
     h('button', { class: tab === k ? 'active' : '', onclick: () => { tab = k; editingSkill = null; providerForm = null; draw(true); } }, icon(ic, 17), label)));
   if (!force && editing(content)) return;
   const scroll = content.scrollTop;
-  fill(content, h('h2', {}, SETTINGS_TABS.find(([k]) => k === tab)[1]), ...VIEWS[tab]());
+  if (!tab) return;
+  fill(content, h('h2', {}, SETTINGS_TABS.find(([k]) => k === tab)?.[1]), ...VIEWS[tab]());
   if (!force) content.scrollTop = scroll;
 }
 
-const row = (label, control, desc = null) => h('div', { class: 'srow' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, label), desc ? h('div', { class: 'desc' }, desc) : null), control);
-const select = (value, options, onchange) => h('select', { class: 'select', onchange: (e) => onchange(e.target.value) },
+const row = (label: string, control: Child, desc: string | null = null) => h('div', { class: 'srow' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, label), desc ? h('div', { class: 'desc' }, desc) : null), control);
+const select = <T extends string>(value: T, options: [T, string][], onchange: (v: T) => void) => h('select', { class: 'select', onchange: (e) => onchange(e.target.value as T) },
   options.map(([v, l]) => h('option', { value: v, selected: value === v ? true : null }, l)));
-const set = (patch) => act('updateSettings', patch);
-const link = (href, label) => h('a', { class: 'btn soft', href, target: '_blank' }, label, icon('external', 14));
-const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : '');
+const set = (patch: Partial<Settings>) => act('updateSettings', patch);
+const link = (href: string, label: string) => h('a', { class: 'btn soft', href, target: '_blank' }, label, icon('external', 14));
+const cap = (s: string | null | undefined) => (s ? s[0].toUpperCase() + s.slice(1) : '');
 
 const TIMEZONES = ['auto', 'Asia/Seoul', 'Asia/Tokyo', 'America/Los_Angeles', 'America/New_York', 'Europe/London', 'UTC'];
 
-function percentBlock(title, win) {
-  if (!win) return null;
-  const pct = Math.round(win.utilization ?? 0);
-  const reset = win.resets_at ? new Date(win.resets_at) : null;
-  const left = reset ? Math.max(0, reset - Date.now()) : 0;
-  const when = !reset ? '' : left > 86400000 ? `${Math.ceil(left / 86400000)}일 후 재설정` : `${Math.max(1, Math.round(left / 3600000))}시간 후 재설정`;
-  return h('div', { class: 'srow', style: 'display:block;padding:18px 16px' },
-    h('div', { class: 'label' }, title),
-    h('div', { style: 'margin-top:10px' }, h('span', { class: 'big-pct' }, `${pct}%`), h('span', { class: 'muted small' }, ' 사용됨')),
-    h('div', { class: 'meter' }, h('div', { style: `width:${Math.min(100, pct)}%` })),
-    h('div', { class: 'muted small' }, when));
-}
-
 // ---------- providers (Aside-style "Models" list) ----------
 
-const providerLogo = (p) => {
+const providerLogo = (p: ProviderView) => {
   if (p.kind === 'chatgpt') return h('span', { class: 'prov-logo' }, icon('openai', 22));
   const src = LOGOS[p.kind === 'claude' ? 'claude' : p.kind === 'anthropic' ? 'anthropic' : ''];
   return h('span', { class: 'prov-logo' }, src ? h('img', { src, width: 24, height: 24, alt: '' }) : icon('cpu', 22));
 };
 
-function providerSub(p) {
+function providerSub(p: ProviderView): string {
   if (p.kind === 'chatgpt') {
     const c = S.chatgpt || { checking: true };
     if (c.checking) return 'Subscription · 확인 중…';
@@ -98,22 +95,22 @@ function providerSub(p) {
     return c.loggedIn ? `Subscription · ${c.email}${c.plan ? ` · ${cap(c.plan)}` : ''}` : 'Subscription · 로그인 필요';
   }
   const where = p.baseUrl ? ` · ${new URL(p.baseUrl).host}` : '';
-  return `API${where}${S.providerKeys.includes(p.id) ? '' : ' · 키 없음'}`;
+  return `API${where}${p.id && S.providerKeys.includes(p.id) ? '' : ' · 키 없음'}`;
 }
 
-async function useProvider(p) {
+async function useProvider(p: ProviderView): Promise<void> {
   if (p.kind === 'claude' && !S.claude?.loggedIn) {
     toast('브라우저에서 Claude 로그인을 마쳐 주세요');
     if ((await act('connectClaude')) !== undefined) toast('Claude 구독을 연결했어요');
     return;
   }
-  act('setProvider', p.id);
+  if (p.id) act('setProvider', p.id);
 }
 
-function providerRow(p) {
+function providerRow(p: Provider): HTMLElement {
   const active = S.settings.provider === p.id;
   const checking = p.kind === 'claude' && S.claude?.checking;
-  const more = h('button', { class: 'x', title: '더보기', onclick: (e) => { e.stopPropagation(); popover(more, [
+  const more: HTMLElement = h('button', { class: 'x', title: '더보기', onclick: (e) => { e.stopPropagation(); popover(more, [
     { icon: 'check', label: '기본으로 사용', onclick: () => useProvider(p) },
     ...(p.kind === 'claude' ? [
       { icon: 'update', label: '연결 다시 확인', onclick: () => act('refreshClaude') },
@@ -127,7 +124,7 @@ function providerRow(p) {
     more);
 }
 
-const CHATGPT = { id: 'chatgpt', kind: 'chatgpt', name: 'ChatGPT' };
+const CHATGPT: ProviderView = { id: 'chatgpt', kind: 'chatgpt', name: 'ChatGPT' };
 
 async function connectChatgpt() {
   if (!S.chatgpt?.loggedIn) toast('브라우저에서 ChatGPT 로그인을 마쳐 주세요');
@@ -137,7 +134,7 @@ async function connectChatgpt() {
 // ChatGPT only generates images, so its ring shows the login rather than the chat provider.
 function chatgptRow() {
   const c = S.chatgpt || {};
-  const more = h('button', { class: 'x', title: '더보기', onclick: (e) => { e.stopPropagation(); popover(more, [
+  const more: HTMLElement = h('button', { class: 'x', title: '더보기', onclick: (e) => { e.stopPropagation(); popover(more, [
     { icon: 'update', label: '연결 다시 확인', onclick: () => act('refreshChatgpt') },
     c.loggedIn ? { icon: 'logout', label: 'ChatGPT에서 로그아웃', onclick: () => act('logoutChatgpt') } : { icon: 'user', label: '로그인', onclick: connectChatgpt },
     { icon: 'close', label: '연결 해제', class: 'danger', onclick: () => act('removeChatgpt') },
@@ -151,36 +148,37 @@ function chatgptRow() {
 
 // Aside-style model menu: search, providers that open a submenu of their models, then extras.
 // groups: [{ name, logo, items: [{ value, label }] }]; extras: [{ value, label }].
-function modelMenu(anchor, groups, extras, value, onPick) {
+function modelMenu(anchor: Element, groups: ModelGroup[], extras: ModelItem[], value: string, onPick: (v: string) => void): void {
   document.querySelectorAll('.popover').forEach((x) => x.remove());
   const menu = h('div', { class: 'popover menu picker-menu' });
   const field = h('input', { placeholder: '모델 검색', oninput: () => draw() });
   const list = h('div', {});
-  let sub = null;
+  let sub: HTMLElement | null = null;
   const close = () => { menu.remove(); sub?.remove(); document.removeEventListener('mousedown', outside, true); };
-  const outside = (e) => { if (!menu.contains(e.target) && !sub?.contains(e.target)) close(); };
-  const pick = (v) => { close(); onPick(v); };
-  const item = (it) => h('button', { onclick: () => pick(it.value) }, h('span', { class: 'grow ellipsis' }, it.label), it.value === value ? icon('check', 16) : null);
-  const openSub = (row, g) => {
+  const outside = (e: MouseEvent) => { const t = e.target as Node; if (!menu.contains(t) && !sub?.contains(t)) close(); };
+  const pick = (v: string) => { close(); onPick(v); };
+  const item = (it: ModelItem) => h('button', { onclick: () => pick(it.value) }, h('span', { class: 'grow ellipsis' }, it.label), it.value === value ? icon('check', 16) : null);
+  const openSub = (row: HTMLElement, g: ModelGroup) => {
     sub?.remove();
-    sub = h('div', { class: 'popover menu picker-sub' }, g.items.map(item));
-    document.body.append(sub);
+    const el = h('div', { class: 'popover menu picker-sub' }, g.items.map(item));
+    sub = el;
+    document.body.append(el);
     const r = row.getBoundingClientRect();
-    const left = r.right + 8 + sub.offsetWidth > window.innerWidth ? r.left - sub.offsetWidth - 8 : r.right + 8;
-    sub.style.left = `${left}px`;
-    sub.style.top = `${Math.min(r.top - 6, window.innerHeight - sub.offsetHeight - 8)}px`;
+    const left = r.right + 8 + el.offsetWidth > window.innerWidth ? r.left - el.offsetWidth - 8 : r.right + 8;
+    el.style.left = `${left}px`;
+    el.style.top = `${Math.min(r.top - 6, window.innerHeight - el.offsetHeight - 8)}px`;
     for (const x of list.querySelectorAll('.open')) x.classList.remove('open');
     row.classList.add('open');
   };
-  const draw = () => {
+  const draw = (): void => {
     const q = field.value.trim().toLowerCase();
     sub?.remove();
     if (q) {
       const hits = groups.flatMap((g) => g.items.filter((it) => `${g.name} ${it.label}`.toLowerCase().includes(q)).map(item));
-      return fill(list, ...(hits.length ? hits : [h('div', { class: 'menu-head' }, '결과 없음')]));
+      return void fill(list, ...(hits.length ? hits : [h('div', { class: 'menu-head' }, '결과 없음')]));
     }
     fill(list, ...groups.map((g) => {
-      const row = h('button', { onmouseenter: () => openSub(row, g), onclick: () => openSub(row, g) }, g.logo, h('span', { class: 'grow' }, g.name), icon('chevron', 14));
+      const row: HTMLElement = h('button', { onmouseenter: () => openSub(row, g), onclick: () => openSub(row, g) }, g.logo, h('span', { class: 'grow' }, g.name), icon('chevron', 14));
       return row;
     }), ...(extras.length ? [h('div', { class: 'sep' }), ...extras.map(item)] : []));
   };
@@ -196,24 +194,24 @@ function modelMenu(anchor, groups, extras, value, onPick) {
 }
 
 // Picker button: logo + current model + chevron, with an optional "···" segment.
-function picker(logo, label, open, more) {
-  const btn = h('button', { class: 'picker-btn', onclick: () => open(btn) }, logo, h('span', { class: 'ellipsis grow' }, label), icon('down', 14));
-  const dots = more ? h('button', { class: 'picker-more', title: '더보기', onclick: () => more(dots) }, icon('more', 16)) : null;
+function picker(logo: Child, label: string, open: (anchor: HTMLElement) => void, more?: (anchor: HTMLElement) => void) {
+  const btn: HTMLElement = h('button', { class: 'picker-btn', onclick: () => open(btn) }, logo, h('span', { class: 'ellipsis grow' }, label), icon('down', 14));
+  const dots: HTMLElement | null = more ? h('button', { class: 'picker-more', title: '더보기', onclick: () => dots && more(dots) }, icon('more', 16)) : null;
   return h('div', { class: 'picker' }, btn, dots);
 }
 
 function taskModels() {
-  const prov = S.settings.providers.find((p) => p.id === S.settings.provider) || S.settings.providers[0] || { kind: 'claude', name: 'Claude' };
-  const small = (p) => h('span', { class: 'picker-logo' }, p.kind === 'chatgpt' ? icon('openai', 16) : LOGOS[p.kind === 'claude' ? 'claude' : p.kind === 'anthropic' ? 'anthropic' : ''] ? h('img', { src: LOGOS[p.kind === 'claude' ? 'claude' : 'anthropic'], width: 16, height: 16, alt: '' }) : icon('cpu', 16));
+  const prov: ProviderView = S.settings.providers.find((p) => p.id === S.settings.provider) || S.settings.providers[0] || { kind: 'claude', name: 'Claude' };
+  const small = (p: ProviderView) => h('span', { class: 'picker-logo' }, p.kind === 'chatgpt' ? icon('openai', 16) : LOGOS[p.kind === 'claude' ? 'claude' : p.kind === 'anthropic' ? 'anthropic' : ''] ? h('img', { src: LOGOS[p.kind === 'claude' ? 'claude' : 'anthropic'], width: 16, height: 16, alt: '' }) : icon('cpu', 16));
   // ChatGPT models (value "openai:<slug>") run on the ChatGPT subscription through Codex.
   const options = modelOptions(S.models, `기본값 (${modelName(S.models, '')})`).map(([value, label]) => ({ value, label: value.startsWith('openai:') ? modelName(S.models, value) : label }));
-  const chatGroups = [
-    { name: prov.name, logo: small(prov), items: options.filter((o) => !o.value.startsWith('openai:')) },
+  const chatGroups: ModelGroup[] = [
+    { name: prov.name || 'Claude', logo: small(prov), items: options.filter((o) => !o.value.startsWith('openai:')) },
     ...(options.some((o) => o.value.startsWith('openai:')) ? [{ name: 'ChatGPT', logo: small(CHATGPT), items: options.filter((o) => o.value.startsWith('openai:')) }] : []),
   ];
   const chatLabel = S.settings.model ? modelName(S.models, S.settings.model) : `기본값 (${modelName(S.models, '')})`;
   const chatLogo = S.settings.model.startsWith('openai:') ? small(CHATGPT) : small(prov);
-  const imageGroups = S.settings.chatgpt ? [{ name: 'ChatGPT', logo: small(CHATGPT), items: [{ value: 'chatgpt', label: 'ChatGPT 이미지 생성' }] }] : [];
+  const imageGroups: ModelGroup[] = S.settings.chatgpt ? [{ name: 'ChatGPT', logo: small(CHATGPT), items: [{ value: 'chatgpt', label: 'ChatGPT 이미지 생성' }] }] : [];
   const imageLabel = S.settings.imageModel === 'chatgpt' ? 'ChatGPT 이미지 생성' : '자동';
   return [
     h('h3', {}, '작업 모델'),
@@ -229,8 +227,8 @@ function taskModels() {
   ];
 }
 
-function connectMenu(anchor) {
-  const has = (kind) => S.settings.providers.some((p) => p.kind === kind);
+function connectMenu(anchor: Element): void {
+  const has = (kind: Provider['kind']) => S.settings.providers.some((p) => p.kind === kind);
   popover(anchor, [
     { header: 'Subscription' },
     { icon: 'sparkle', label: 'Claude', hint: has('claude') ? '연결됨' : '', onclick: () => useProvider(S.settings.providers.find((p) => p.kind === 'claude') || { kind: 'claude' }) },
@@ -253,7 +251,7 @@ function providerFormView() {
     h('div', { class: 'stack' }, name, base, key),
     h('div', { class: 'btns' },
       h('button', { class: 'btn primary', onclick: async () => {
-        if ((await act('addProvider', { kind: providerForm, name: name.value.trim(), baseUrl: base?.value.trim(), key: key.value.trim() })) === undefined && !S.settings.providers.some((p) => p.name === (name.value.trim() || 'Anthropic'))) return;
+        if ((await act('addProvider', { kind: providerForm || 'custom', name: name.value.trim(), baseUrl: base?.value.trim(), key: key.value.trim() })) === undefined && !S.settings.providers.some((p) => p.name === (name.value.trim() || 'Anthropic'))) return;
         providerForm = null;
         draw(true);
       } }, '연결'),
@@ -261,7 +259,7 @@ function providerFormView() {
   ];
 }
 
-export function confirmLogout() {
+export function confirmLogout(): void {
   if (!tab) openSettings('general');
   const content = $('#overlay .settings .content');
   fill(content, h('h2', {}, 'Claude에서 로그아웃할까요?'),
@@ -271,11 +269,11 @@ export function confirmLogout() {
       h('button', { class: 'btn', onclick: () => draw(true) }, '취소')));
 }
 
-const VIEWS = {
+const VIEWS: Record<Tab, () => Child[]> = {
   general() {
     const when = h('input', { class: 'field', placeholder: '예: 내 대신 이메일에 답장해 줘' });
-    let effect = 'allow';
-    const label = { allow: '자동으로 허용', ask: '먼저 묻기', deny: '차단' };
+    let effect: Effect = 'allow';
+    const label: Record<Effect, string> = { allow: '자동으로 허용', ask: '먼저 묻기', deny: '차단' };
     const claude = S.claude || {};
     return [
       h('h3', {}, '계정'),
@@ -284,9 +282,9 @@ const VIEWS = {
         h('div', { class: 'grow' },
           h('input', { class: 'field bare', title: '이름 수정', maxlength: 40, value: S.settings.userName, onchange: (e) => set({ userName: e.target.value.trim() || '나' }) }),
           claude.email ? h('div', { class: 'muted small row', style: 'gap:6px' }, claude.email,
-            h('button', { class: 'x', title: '복사', onclick: () => { navigator.clipboard.writeText(claude.email); toast('복사했어요'); } }, icon('copy', 14)))
+            h('button', { class: 'x', title: '복사', onclick: () => { navigator.clipboard.writeText(claude.email || ''); toast('복사했어요'); } }, icon('copy', 14)))
             : h('div', { class: 'muted small' }, claude.checking ? '확인 중…' : 'Claude 계정이 연결되지 않았어요')),
-        h('button', { class: 'btn soft', onclick: (e) => connectMenu(e.currentTarget) }, '계정 추가'),
+        h('button', { class: 'btn soft', onclick: (e) => connectMenu(e.currentTarget as Element) }, '계정 추가'),
         claude.loggedIn ? h('button', { class: 'btn soft', onclick: confirmLogout }, '로그아웃')
           : h('button', { class: 'btn soft', onclick: () => useProvider({ kind: 'claude' }) }, '로그인'))),
 
@@ -313,12 +311,12 @@ const VIEWS = {
           h('div', { class: 'label', style: 'margin:14px 0 6px' }, 'Bot이 다음을 하려고 할 때:'), when,
           h('div', { class: 'label', style: 'margin:12px 0 6px' }, '이렇게 해야 해요:'),
           h('div', { class: 'row' },
-            select(effect, Object.entries(label), (v) => { effect = v; }),
+            select(effect, Object.entries(label) as [Effect, string][], (v) => { effect = v; }),
             h('span', { class: 'grow' }),
             h('button', { class: 'btn', onclick: () => act('addReviewRule', when.value, effect).then(() => { when.value = ''; }) }, '규칙 추가')),
           h('div', { class: 'desc', style: 'margin-top:12px' }, '이 규칙은 나에게만 적용돼요. 기본 제공 안전 검사는 항상 적용돼요.')) : null,
         ...S.settings.reviewRules.map((r) => h('div', { class: 'rule-row' }, h('span', { class: `badge ${r.effect}` }, label[r.effect]), h('span', { class: 'grow' }, r.when), h('button', { class: 'x', onclick: () => act('deleteReviewRule', r.id) }, '×'))),
-        ...S.rules.map((r) => h('div', { class: 'rule-row' }, h('span', { class: `badge ${r.effect}` }, label[r.effect]), h('code', { class: 'grow' }, r.tool, r.botId ? ` · ${S.bots.find((b) => b.id === r.botId)?.name || ''}` : ''), h('button', { class: 'x', onclick: () => act('deleteRule', r.id) }, '×')))),
+        ...S.rules.map((r) => h('div', { class: 'rule-row' }, h('span', { class: `badge ${r.effect}` }, label[r.effect]), h('code', { class: 'grow' }, r.tool || r.match || '', r.botId ? ` · ${S.bots.find((b) => b.id === r.botId)?.name || ''}` : ''), h('button', { class: 'x', onclick: () => act('deleteRule', r.id) }, '×')))),
     ];
   },
 
@@ -345,21 +343,21 @@ const VIEWS = {
   usage() {
     if (!usage) refreshUsage();
     const u = S.usage;
-    const meter = (title, pct, resetsAt) => {
-      const left = resetsAt ? Math.max(0, new Date(resetsAt) - Date.now()) : 0;
+    const meter = (title: string, pct: number | null | undefined, resetsAt: string | number | null | undefined) => {
+      const left = resetsAt ? Math.max(0, new Date(resetsAt).getTime() - Date.now()) : 0;
       const when = !resetsAt ? '' : left > 86400000 ? `${Math.ceil(left / 86400000)}일 후 재설정` : `${Math.max(1, Math.round(left / 3600000))}시간 후 재설정`;
       const p = Math.round(pct ?? 0);
       return h('div', { class: 'urow' }, h('span', { class: 'ulabel' }, title), h('div', { class: 'meter' }, h('div', { style: `width:${Math.min(100, p)}%` })),
         h('span', { class: 'upct' }, `${p}%`), h('span', { class: 'muted small uwhen' }, when));
     };
-    const card = (logo, name, plan, manage, rows, empty) => h('div', { class: 'group ucard' },
+    const card = (logo: Child, name: string, plan: string | null | undefined, manage: string, rows: Child[] | null | undefined, empty: string) => h('div', { class: 'group ucard' },
       h('div', { class: 'uhead' }, logo, h('span', { class: 'grow' }, name, plan ? h('span', { class: 'muted' }, ` · ${cap(plan)}`) : null), manage ? link(manage, '관리') : null),
       rows?.length ? rows : h('div', { class: 'muted small' }, empty));
     const claude = usage?.available
       ? [usage.fiveHour && meter('5시간', usage.fiveHour.utilization, usage.fiveHour.resets_at), usage.sevenDay && meter('주간', usage.sevenDay.utilization, usage.sevenDay.resets_at)].filter(Boolean)
       : null;
     const gpt = usage?.chatgpt?.windows.map((w) => meter(w.title, w.usedPercent, w.resetsAt));
-    const tokens = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n));
+    const tokens = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n));
     return [
       h('div', { style: 'margin-top:18px' }),
       card(h('img', { src: LOGOS.claude, width: 18, height: 18, alt: '' }), 'Claude Code', usage?.plan || S.claude?.plan, 'https://claude.ai/settings/usage', claude,
@@ -383,7 +381,7 @@ const VIEWS = {
 
   skills() {
     if (editingSkill) {
-      const s = editingSkill;
+      const s: Partial<Skill> = editingSkill;
       const name = h('input', { class: 'field', value: s.name || '', placeholder: '이름 (예: weekly-report)' });
       const desc = h('input', { class: 'field', value: s.description || '', placeholder: '언제 쓰는지 한 줄 설명' });
       const body = h('textarea', { class: 'field', style: 'min-height:300px', value: s.body || '', placeholder: '단계별 지침을 마크다운으로 적어주세요' });
@@ -405,14 +403,14 @@ const VIEWS = {
   },
 
   routines() {
-    const bot = (id) => S.bots.find((b) => b.id === id);
-    const conv = (id) => S.convs.find((c) => c.id === id);
+    const bot = (id: string) => S.bots.find((b) => b.id === id);
+    const conv = (id: string) => S.convs.find((c) => c.id === id);
     return [
       h('p', { class: 'muted small' }, '루틴은 Bot이 일정에 따라 실행하는 반복 작업이에요. 채팅으로 설정해 달라고 요청하세요. 최소 15분 간격, 최대 20개, 10번 연속 실패하면 자동으로 꺼져요.'),
       h('div', { class: 'group' }, S.routines.length ? S.routines.map((r) => h('div', { class: 'srow' },
         avatar(bot(r.botId), 26),
         h('div', { class: 'grow' }, h('div', { class: 'label' }, r.prompt),
-          h('div', { class: 'desc' }, `${r.schedule.type === 'daily' ? `매일 ${r.schedule.time}` : `${r.schedule.minutes}분마다`} · ${conv(r.convId)?.name || bot(r.botId)?.name || ''} · 마지막 실행 ${r.lastRun ? new Date(r.lastRun).toLocaleString() : '없음'}${r.failures ? ` · 연속 실패 ${r.failures}` : ''}`)),
+          h('div', { class: 'desc' }, `${S.routineInfo[r.id]?.when || ''} · ${conv(r.convId)?.name || bot(r.botId)?.name || ''} · 마지막 실행 ${r.lastRun ? new Date(r.lastRun).toLocaleString() : '없음'}${r.failures ? ` · 연속 실패 ${r.failures}` : ''}`)),
         toggle(r.enabled, (v) => act('setRoutineEnabled', r.id, v)),
         h('button', { class: 'x', onclick: () => act('deleteRoutine', r.id) }, '×')))
         : h('div', { class: 'srow muted' }, '아직 루틴이 없어요')),
@@ -420,7 +418,7 @@ const VIEWS = {
   },
 
   activity() {
-    const bot = (id) => S.bots.find((b) => b.id === id)?.name || '삭제된 Bot';
+    const bot = (id: string) => S.bots.find((b) => b.id === id)?.name || '삭제된 Bot';
     return [
       h('div', { class: 'row', style: 'margin:6px 0 12px' }, h('div', { class: 'muted small grow' }, 'Bot이 허용·거부·실패한 모든 작업 (최근 1000건). 시크릿 값은 가려져요.'), h('button', { class: 'btn', onclick: () => act('clearAudit') }, '비우기')),
       h('table', { class: 'audit' },
@@ -435,7 +433,7 @@ const VIEWS = {
 // 일반 › 모델: providers, then which model does what. The API-key form replaces it while open.
 function modelsSection() {
   if (providerForm) return [h('h3', {}, providerForm === 'custom' ? '사용자 지정 제공자' : 'Anthropic API'), ...providerFormView()];
-  const add = h('button', { class: 'srow prov add', onclick: () => connectMenu(add) }, icon('plus', 18), h('span', { class: 'grow' }, '연결'));
+  const add: HTMLElement = h('button', { class: 'srow prov add', onclick: () => connectMenu(add) }, icon('plus', 18), h('span', { class: 'grow' }, '연결'));
   return [
     h('h3', {}, '모델 제공자'),
     h('div', { class: 'group' }, ...S.settings.providers.map(providerRow), S.settings.chatgpt ? chatgptRow() : null, add),

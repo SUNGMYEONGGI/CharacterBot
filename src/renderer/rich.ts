@@ -1,13 +1,17 @@
 // Rich content in chat: markdown with KaTeX math, Mermaid diagrams, the
 // full-screen file viewer and voice memo audio helpers.
-import { marked } from './node_modules/marked/lib/marked.esm.js';
-import DOMPurify from './node_modules/dompurify/dist/purify.es.mjs';
-import katex from './node_modules/katex/dist/katex.mjs';
-import { h, fill, icon, openModal, closeModal } from './ui.js';
+import { marked, type Tokens } from 'marked';
+import DOMPurify from 'dompurify';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
+import type { Message } from '../shared/types';
+import { h, fill, icon, openModal, closeModal } from './ui';
+
+type MathToken = Tokens.Generic & { text: string; display?: boolean };
 
 // ---------- markdown + math ----------
 
-const tex = (text, displayMode) => katex.renderToString(text, { throwOnError: false, displayMode });
+const tex = (text: string, displayMode: boolean): string => katex.renderToString(text, { throwOnError: false, displayMode });
 marked.use({
   gfm: true,
   breaks: true,
@@ -15,43 +19,43 @@ marked.use({
     {
       name: 'mathBlock',
       level: 'block',
-      start: (src) => src.match(/^\$\$/m)?.index,
-      tokenizer(src) {
+      start: (src: string) => src.match(/^\$\$/m)?.index,
+      tokenizer(src: string) {
         const m = /^\$\$\s*([\s\S]+?)\s*\$\$(?:\n|$)/.exec(src);
         if (m) return { type: 'mathBlock', raw: m[0], text: m[1] };
       },
-      renderer: (t) => `<div class="math-block">${tex(t.text, true)}</div>`,
+      renderer: (t: Tokens.Generic) => `<div class="math-block">${tex((t as MathToken).text, true)}</div>`,
     },
     {
       name: 'math',
       level: 'inline',
-      start: (src) => { const i = src.indexOf('$'); return i < 0 ? undefined : i; },
+      start: (src: string) => { const i = src.indexOf('$'); return i < 0 ? undefined : i; },
       // $x$ but not prices like "$5 and $10": no space inside the dollars, no digit after.
-      tokenizer(src) {
+      tokenizer(src: string) {
         const m = /^\$\$([^$]+?)\$\$/.exec(src) || /^\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\d)/.exec(src);
         if (m) return { type: 'math', raw: m[0], text: m[1], display: m[0].startsWith('$$') };
       },
-      renderer: (t) => tex(t.text, t.display),
+      renderer: (t: Tokens.Generic) => tex((t as MathToken).text, Boolean((t as MathToken).display)),
     },
   ],
 });
-DOMPurify.addHook('afterSanitizeAttributes', (node) => { if (node.tagName === 'A') node.setAttribute('target', '_blank'); });
-export const md = (text) => DOMPurify.sanitize(marked.parse(text || ''));
+DOMPurify.addHook('afterSanitizeAttributes', (node: Element) => { if (node.tagName === 'A') node.setAttribute('target', '_blank'); });
+export const md = (text: string | undefined): string => DOMPurify.sanitize(marked.parse(text || '', { async: false }));
 
 // ---------- mermaid ----------
 
-let mermaidLib;
-const diagrams = new Map(); // source -> svg markup (null when it doesn't parse)
+let mermaidLib: Promise<typeof import('mermaid').default> | undefined;
+const diagrams = new Map<string, string | null>(); // source -> svg markup (null when it doesn't parse)
 const dark = () => document.documentElement.dataset.theme === 'dark'
   || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
 
-async function drawMermaid(src) {
+async function drawMermaid(src: string): Promise<string | null> {
   const key = `${dark()}\n${src}`;
-  if (diagrams.has(key)) return diagrams.get(key);
-  mermaidLib ||= import('./node_modules/mermaid/dist/mermaid.esm.min.mjs').then((m) => m.default);
+  if (diagrams.has(key)) return diagrams.get(key) ?? null;
+  mermaidLib ||= import('mermaid').then((m) => m.default); // large: its own chunk, loaded on first diagram
   const mermaid = await mermaidLib;
   mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: dark() ? 'dark' : 'default', fontFamily: 'inherit' });
-  let svg = null;
+  let svg: string | null = null;
   try {
     svg = (await mermaid.render(`mmd${diagrams.size}`, src)).svg;
   } catch {}
@@ -60,11 +64,12 @@ async function drawMermaid(src) {
 }
 
 // Swaps ```mermaid code blocks under root for the drawn diagram.
-export function renderDiagrams(root) {
+export function renderDiagrams(root: ParentNode): void {
   for (const code of root.querySelectorAll('pre > code.language-mermaid')) {
     const pre = code.parentElement;
-    const src = code.textContent;
-    const put = (svg) => {
+    if (!pre) continue;
+    const src = code.textContent || '';
+    const put = (svg: string | null | undefined) => {
       if (!svg || !pre.parentNode) return;
       pre.replaceWith(h('div', { class: 'diagram', title: '다이어그램 전체 화면으로 열기', html: svg, onclick: () => openViewer({ kind: 'svg', name: '다이어그램', svg }) }));
     };
@@ -76,9 +81,9 @@ export function renderDiagrams(root) {
 
 // ---------- full-screen viewer ----------
 
-export function parseCsv(text, sep) {
-  const rows = [];
-  let row = [];
+export function parseCsv(text: string, sep: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
   let cell = '';
   let quoted = false;
   for (let i = 0; i < text.length; i++) {
@@ -94,14 +99,24 @@ export function parseCsv(text, sep) {
 
 // file: { kind: image|svg|markdown|table|text|html|other, name, dataUrl?, svg?, text?, ext?, url? }
 // openExternal: opens it in the default app (shown when given).
-export function openViewer(file, openExternal = null) {
-  let body;
+export interface ViewerFile {
+  kind: string;
+  name: string;
+  dataUrl?: string;
+  svg?: string;
+  text?: string;
+  ext?: string;
+  url?: string;
+}
+
+export function openViewer(file: ViewerFile, openExternal: (() => void) | null = null): void {
+  let body: HTMLElement;
   if (file.kind === 'image') body = h('img', { class: 'viewer-img', src: file.dataUrl, alt: file.name });
   else if (file.kind === 'svg') body = h('div', { class: 'viewer-svg', html: file.svg });
   else if (file.kind === 'markdown') body = h('div', { class: 'viewer-doc msg bot', html: md(file.text) });
   else if (file.kind === 'html') body = h('iframe', { class: 'viewer-frame', sandbox: 'allow-scripts', src: file.url });
   else if (file.kind === 'table') {
-    const [head = [], ...rows] = parseCsv(file.text, file.ext === '.tsv' ? '\t' : ',');
+    const [head = [], ...rows] = parseCsv(file.text || '', file.ext === '.tsv' ? '\t' : ',');
     body = h('div', { class: 'viewer-table' }, h('table', {},
       h('thead', {}, h('tr', {}, head.map((c) => h('th', {}, c)))),
       h('tbody', {}, rows.slice(0, 2000).map((r) => h('tr', {}, r.map((c) => h('td', {}, c)))))));
@@ -118,14 +133,14 @@ export function openViewer(file, openExternal = null) {
 
 // ---------- voice memos ----------
 
-export const blobToDataUrl = (blob) => new Promise((resolve) => {
+export const blobToDataUrl = (blob: Blob): Promise<string> => new Promise((resolve) => {
   const r = new FileReader();
-  r.onload = () => resolve(r.result);
+  r.onload = () => resolve(String(r.result));
   r.readAsDataURL(blob);
 });
 
 // Recorded audio (webm/opus) -> 16 kHz mono 16-bit WAV data URL for transcription.
-export async function toWav16k(blob) {
+export async function toWav16k(blob: Blob): Promise<string> {
   const ctx = new AudioContext();
   const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
   ctx.close();
@@ -137,7 +152,7 @@ export async function toWav16k(blob) {
   src.start();
   const pcm = (await off.startRendering()).getChannelData(0);
   const view = new DataView(new ArrayBuffer(44 + pcm.length * 2));
-  const str = (at, s) => [...s].forEach((c, i) => view.setUint8(at + i, c.charCodeAt(0)));
+  const str = (at: number, s: string) => [...s].forEach((c, i) => view.setUint8(at + i, c.charCodeAt(0)));
   str(0, 'RIFF'); view.setUint32(4, 36 + pcm.length * 2, true); str(8, 'WAVE');
   str(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
   view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
@@ -146,13 +161,14 @@ export async function toWav16k(blob) {
   return blobToDataUrl(new Blob([view], { type: 'audio/wav' }));
 }
 
-export const clock = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+export const clock = (sec: number): string => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
 // A voice memo bubble with play/pause and progress. Cached per message so a
 // re-render doesn't stop playback.
-const voiceEls = new Map();
-export function voiceBubble(m) {
-  if (voiceEls.has(m.id)) return voiceEls.get(m.id);
+const voiceEls = new Map<string, HTMLElement>();
+export function voiceBubble(m: Message & { voice: NonNullable<Message['voice']> }): HTMLElement {
+  const cached = voiceEls.get(m.id);
+  if (cached) return cached;
   const audio = h('audio', { src: m.voice.dataUrl, preload: 'metadata' });
   const bar = h('i');
   const btn = h('button', { class: 'play', title: '음성 메모 재생', onclick: () => (audio.paused ? audio.play() : audio.pause()) }, icon('play', 14));

@@ -1,18 +1,30 @@
 // DOM helpers, icons and bot avatars shared by every view.
+import type { Actions } from '../main/main';
+import type { Bot, ModelInfo } from '../shared/types';
 
-export const $ = (sel) => document.querySelector(sel);
+// The app's own markup (index.html) always has these nodes.
+export const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
+
+// Event handlers by name (onclick, oninput, ...), typed from the DOM event map.
+// `target` is typed as an input because most handlers read its value or checked.
+type Handlers = { [K in keyof HTMLElementEventMap as `on${K}`]?: (e: HTMLElementEventMap[K] & { target: HTMLInputElement }) => unknown };
+export type Props = Handlers & { [attr: string]: unknown };
+// A child: a node, text, or nothing (null/false/undefined are skipped), nested freely.
+export type Child = Node | string | number | null | undefined | false | Child[];
 
 // h('div', { class, onclick, html, ... }, ...children); null/false children are skipped.
-export function h(tag, props = {}, ...children) {
+export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props?: Props | null, ...children: Child[]): HTMLElementTagNameMap[K];
+export function h(tag: string, props?: Props | null, ...children: Child[]): HTMLElement;
+export function h(tag: string, props: Props | null = {}, ...children: Child[]): HTMLElement {
   const el = document.createElement(tag);
   for (const [key, value] of Object.entries(props || {})) {
     if (value == null || value === false) continue;
-    if (key === 'html') el.innerHTML = value;
-    else if (key.startsWith('on')) el.addEventListener(key.slice(2), value);
-    else if (key === 'value' || key === 'checked' || key === 'disabled') el[key] = value;
-    else el.setAttribute(key, value === true ? '' : value);
+    if (key === 'html') el.innerHTML = String(value);
+    else if (key.startsWith('on')) el.addEventListener(key.slice(2), value as EventListener);
+    else if (key === 'value' || key === 'checked' || key === 'disabled') (el as unknown as Record<string, unknown>)[key] = value;
+    else el.setAttribute(key, value === true ? '' : String(value));
   }
-  for (const child of children.flat(3)) {
+  for (const child of (children as unknown[]).flat(3) as Child[]) {
     if (child == null || child === false) continue;
     el.append(child instanceof Node ? child : String(child));
   }
@@ -20,11 +32,12 @@ export function h(tag, props = {}, ...children) {
 }
 
 // replaceChildren() that skips null/false instead of rendering them as text.
-export const fill = (el, ...kids) => el.replaceChildren(...kids.flat(3).filter((k) => k != null && k !== false));
+export const fill = (el: Element, ...kids: Child[]): void =>
+  el.replaceChildren(...((kids as unknown[]).flat(3) as Child[]).filter((k): k is Node | string | number => k != null && k !== false).map((k) => (typeof k === 'number' ? String(k) : k)));
 
 // ---------- icons (1.6px strokes on a 24 grid) ----------
 
-const ICONS = {
+const ICONS: Record<string, string> = {
   search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   share: '<path d="M12 15V4m0 0L8 8m4-4 4 4"/><path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/>',
@@ -81,7 +94,7 @@ const ICONS = {
   tool: '<path d="M14.5 6.5a4 4 0 0 0-5 5L4 17l3 3 5.5-5.5a4 4 0 0 0 5-5L15 12l-3-3z"/>',
 };
 
-export function icon(name, size = 18) {
+export function icon(name: string, size = 18): HTMLElement {
   return h('span', {
     class: 'icon',
     html: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`,
@@ -91,8 +104,9 @@ export function icon(name, size = 18) {
 // ---------- bot avatars: procedural blob shapes with two eyes ----------
 
 // r(θ) = 1 + a·cos(n·θ + phase), sampled and scaled to fit a 100×100 box.
-function polar(n, a, phase = 0, squash = 1) {
-  const pts = [];
+type Pt = [number, number];
+function polar(n: number, a: number, phase = 0, squash = 1): Pt[] {
+  const pts: Pt[] = [];
   for (let i = 0; i < 96; i++) {
     const t = (i / 96) * Math.PI * 2;
     const r = 1 + a * Math.cos(n * t + phase);
@@ -101,8 +115,8 @@ function polar(n, a, phase = 0, squash = 1) {
   return pts;
 }
 
-function superellipse(rx, ry, p) {
-  const pts = [];
+function superellipse(rx: number, ry: number, p: number): Pt[] {
+  const pts: Pt[] = [];
   for (let i = 0; i < 96; i++) {
     const t = (i / 96) * Math.PI * 2;
     const c = Math.cos(t);
@@ -112,8 +126,8 @@ function superellipse(rx, ry, p) {
   return pts;
 }
 
-function egg() {
-  const pts = [];
+function egg(): Pt[] {
+  const pts: Pt[] = [];
   for (let i = 0; i < 96; i++) {
     const t = (i / 96) * Math.PI * 2;
     pts.push([Math.cos(t) * (1 + 0.1 * Math.sin(t)) * 0.9, Math.sin(t)]);
@@ -139,9 +153,10 @@ const SHAPE_POINTS = [
 ];
 export const SHAPE_COUNT = SHAPE_POINTS.length;
 
-const pathCache = new Map();
-function shapePath(i) {
-  if (pathCache.has(i)) return pathCache.get(i);
+const pathCache = new Map<number, string>();
+function shapePath(i: number): string {
+  const cached = pathCache.get(i);
+  if (cached) return cached;
   const pts = SHAPE_POINTS[i]();
   const max = Math.max(...pts.flat().map(Math.abs));
   const scaled = pts.map(([x, y]) => [50 + (x / max) * 45, 52 + (y / max) * 45]);
@@ -157,12 +172,12 @@ function shapePath(i) {
     d += `C${c1.map((v) => v.toFixed(1))} ${c2.map((v) => v.toFixed(1))} ${p2.map((v) => v.toFixed(1))}`;
   }
   pathCache.set(i, `${d}Z`);
-  return pathCache.get(i);
+  return `${d}Z`;
 }
 
 // Body and eyes are separate groups so CSS can animate them: .av-body moves the
 // whole bot, .av-look shifts the eyes (gaze), .eye blinks.
-export function avatarSvg(shape = 0, color = '#999', size = 40, { sleeping = false } = {}) {
+export function avatarSvg(shape = 0, color = '#999', size = 40, { sleeping = false } = {}): string {
   const i = Number.isInteger(shape) && shape < SHAPE_COUNT ? shape : 0;
   const leaf = i === SHAPE_COUNT - 1 ? '<path d="M52 9c6-6 14-6 18-3-4 5-11 7-18 3z" fill="#2ec27e"/><path d="M51 12l-2-8" stroke="#3a2a1a" stroke-width="2.5" stroke-linecap="round"/>' : '';
   const eyes = sleeping
@@ -172,15 +187,15 @@ export function avatarSvg(shape = 0, color = '#999', size = 40, { sleeping = fal
 }
 
 // Older saves stored shapes as names.
-const LEGACY_SHAPES = { hex: 8, square: 1 };
-export const shapeOf = (bot) => (typeof bot?.shape === 'number' ? bot.shape : LEGACY_SHAPES[bot?.shape] ?? 0);
+const LEGACY_SHAPES: Record<string, number> = { hex: 8, square: 1 };
+export const shapeOf = (bot: Partial<Bot> | null | undefined): number => (typeof bot?.shape === 'number' ? bot.shape : LEGACY_SHAPES[String(bot?.shape)] ?? 0);
 
 // What a bot is doing right now (idle, thinking, streaming, working, blocked,
 // finished), as in Grok Bot's animated avatars. The app installs the resolver.
-let stateOf = () => 'idle';
-export const setAvatarState = (fn) => { stateOf = fn; };
+let stateOf: (botId: string) => string = () => 'idle';
+export const setAvatarState = (fn: (botId: string) => string): void => { stateOf = fn; };
 
-export function avatar(bot, size, state = bot?.id ? stateOf(bot.id) : 'idle') {
+export function avatar(bot: Partial<Bot> | null | undefined, size: number, state = bot?.id ? stateOf(bot.id) : 'idle'): HTMLElement {
   // A negative delay keeps looping animations in phase across re-renders.
   const attrs = { 'data-bot': bot?.id || null, 'data-st': state, style: `width:${size}px;height:${size}px;--t0:-${Date.now() % 6000}ms` };
   if (bot?.image) return h('span', { ...attrs, class: 'avatar img' }, h('img', { src: bot.image, alt: '' }));
@@ -193,9 +208,9 @@ document.addEventListener('mousemove', (e) => {
   if (gazeFrame) return;
   gazeFrame = requestAnimationFrame(() => {
     gazeFrame = 0;
-    for (const el of document.querySelectorAll('.avatar[data-st="idle"] .av-look')) {
-      const r = el.closest('.avatar').getBoundingClientRect();
-      if (!r.width) continue;
+    for (const el of document.querySelectorAll<SVGElement>('.avatar[data-st="idle"] .av-look')) {
+      const r = el.closest('.avatar')?.getBoundingClientRect();
+      if (!r?.width) continue;
       const dx = e.clientX - (r.left + r.width / 2);
       const dy = e.clientY - (r.top + r.height / 2);
       const d = Math.hypot(dx, dy) || 1;
@@ -205,31 +220,31 @@ document.addEventListener('mousemove', (e) => {
   });
 });
 
-export const initials = (name = '') => name.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '나';
+export const initials = (name = ''): string => name.split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '나';
 
-export function userAvatar(name, size) {
+export function userAvatar(name: string, size: number): HTMLElement {
   return h('span', { class: 'user-avatar', style: `width:${size}px;height:${size}px;font-size:${Math.max(8, size * 0.36)}px` }, initials(name));
 }
 
 // ---------- misc ----------
 
 // Versioned name of a model value ("opus" -> "Opus 5.5"); '' is the provider default.
-export function modelName(models, value) {
+export function modelName(models: ModelInfo[] | undefined, value: string): string {
   const m = models?.find((x) => x.value === value);
   return m ? m.name : value ? value[0].toUpperCase() + value.slice(1) : '기본값';
 }
 
 // [value, label] pairs for a model <select>. `inherit` labels the '' option.
-export function modelOptions(models, inherit) {
+export function modelOptions(models: ModelInfo[] | undefined, inherit: string): [string, string][] {
   const list = models?.length ? models : ['', 'opus', 'sonnet', 'haiku', 'fable'].map((value) => ({ value }));
-  return list.map((m) => [m.value, m.value === '' ? inherit : `${m.value.startsWith('openai:') ? 'ChatGPT · ' : ''}${modelName(models, m.value)}`]);
+  return list.map((m): [string, string] => [m.value, m.value === '' ? inherit : `${m.value.startsWith('openai:') ? 'ChatGPT · ' : ''}${modelName(models, m.value)}`]);
 }
 
 // True while the user is typing inside el, so a re-render would steal input.
-export const editing = (el) => el.contains(document.activeElement) && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+export const editing = (el: Element): boolean => el.contains(document.activeElement) && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
 
-let toastTimer;
-export function toast(text) {
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
+export function toast(text: string): void {
   const el = $('#toast');
   el.textContent = text;
   el.classList.add('show');
@@ -238,26 +253,26 @@ export function toast(text) {
 }
 
 // Calls a main-process action; failures surface as a toast.
-export async function act(name, ...args) {
+export async function act<K extends keyof Actions>(name: K, ...args: Parameters<Actions[K]>): Promise<Awaited<ReturnType<Actions[K]>> | undefined> {
   try {
     return await window.desktop.act(name, ...args);
   } catch (err) {
-    toast(err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+    toast((err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
     return undefined;
   }
 }
 
-let onModalClose = null;
-export function openModal(node, onClose = null) {
+let onModalClose: (() => void) | null = null;
+export function openModal(node: Child, onClose: (() => void) | null = null): void {
   document.querySelectorAll('.popover').forEach((x) => x.remove());
   onModalClose?.();
   onModalClose = onClose;
   fill($('#overlay'), node);
   $('#overlay').classList.add('open');
-  $('#overlay').onmousedown = (e) => { if (e.target.id === 'overlay') closeModal(); };
+  $('#overlay').onmousedown = (e) => { if ((e.target as HTMLElement).id === 'overlay') closeModal(); };
 }
 
-export function closeModal() {
+export function closeModal(): void {
   const cb = onModalClose;
   onModalClose = null;
   $('#overlay').classList.remove('open');
@@ -267,21 +282,32 @@ export function closeModal() {
 
 export const modalOpen = () => $('#overlay').classList.contains('open');
 
-export function toggle(checked, onchange) {
+export function toggle(checked: boolean, onchange: (checked: boolean) => void): HTMLInputElement {
   return h('input', { type: 'checkbox', class: 'toggle', checked, onchange: (e) => onchange(e.target.checked) });
 }
 
 // Popover menu anchored to an element; closes on outside click.
-export function popover(anchor, items, { place = 'below' } = {}) {
+export interface MenuItem {
+  label?: string;
+  icon?: string;
+  hint?: string;
+  class?: string;
+  chevron?: boolean;
+  header?: string;
+  onclick?: () => void;
+}
+
+// Falsy items are skipped, so callers can list conditional entries inline.
+export function popover(anchor: Element, items: (MenuItem | '-' | null | false | undefined)[], { place = 'below' } = {}): HTMLElement {
   document.querySelectorAll('.popover').forEach((x) => x.remove());
   const rect = anchor.getBoundingClientRect();
-  const menu = h('div', { class: 'popover menu' }, items.map((it) => (it === '-' ? h('div', { class: 'sep' }) : it.header ? h('div', { class: 'menu-head' }, it.header) : h('button', {
+  const menu = h('div', { class: 'popover menu' }, items.filter((it) => it !== null && it !== false && it !== undefined).map((it) => (it === '-' ? h('div', { class: 'sep' }) : it.header ? h('div', { class: 'menu-head' }, it.header) : h('button', {
     class: it.class || '',
-    onclick: () => { close(); it.onclick(); },
+    onclick: () => { close(); it.onclick?.(); },
   }, it.icon ? icon(it.icon, 16) : null, h('span', { class: 'grow' }, it.label), it.hint ? h('span', { class: 'muted small' }, it.hint) : null, it.chevron ? icon('chevron', 14) : null))));
   const close = () => { menu.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', esc, true); };
-  const outside = (e) => { if (!menu.contains(e.target)) close(); };
-  const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+  const outside = (e: MouseEvent) => { if (!menu.contains(e.target as Node)) close(); };
+  const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
   document.body.append(menu);
   const left = Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8);
   menu.style.left = `${Math.max(8, left)}px`;
@@ -290,10 +316,10 @@ export function popover(anchor, items, { place = 'below' } = {}) {
   return menu;
 }
 
-export function relativeDay(ts) {
+export function relativeDay(ts: number): string {
   const d = new Date(ts);
   const today = new Date();
-  const days = Math.round((new Date(today.toDateString()) - new Date(d.toDateString())) / 86400000);
+  const days = Math.round((new Date(today.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86400000);
   const time = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
   if (days === 0) return `오늘 ${time}`;
   if (days === 1) return `어제 ${time}`;

@@ -1,8 +1,14 @@
 // Turns the part of a conversation a bot hasn't seen yet into its next prompt.
 // The SDK session keeps everything before that, so each turn only sends what's
 // new: user messages and, in a group, the other bots' replies.
+import type { Bot, Conv, Message, Skill } from '../shared/types';
 
-function userText(msg, userName, skills, group, nameOf, messages) {
+export interface Prompt {
+  text: string;
+  images: { mediaType: string; data: string }[];
+}
+
+function userText(msg: Message, userName: string, skills: Skill[], group: boolean, nameOf: (id: string) => string, messages: Message[]): string {
   let text = msg.fromBotId ? `[${nameOf(msg.fromBotId)}이(가) 보낸 메시지]: ${msg.content}`
     : group ? `${userName}: ${msg.content}` : msg.content;
   const root = msg.threadOf && messages.find((m) => m.id === msg.threadOf);
@@ -19,11 +25,14 @@ function userText(msg, userName, skills, group, nameOf, messages) {
 }
 
 // Returns { text, images: [{ mediaType, data }] } for messages[from..].
-function pendingPrompt(conv, botId, { bots, userName, skills = [] }, from = 0) {
-  const nameOf = (id) => bots.find((b) => b.id === id)?.name || 'Bot';
+function pendingPrompt(
+  conv: Pick<Conv, 'kind' | 'messages'>, botId: string | null,
+  { bots, userName, skills = [] }: { bots: Bot[]; userName: string; skills?: Skill[] }, from = 0,
+): Prompt {
+  const nameOf = (id: string) => bots.find((b) => b.id === id)?.name || 'Bot';
   const group = conv.kind === 'group';
-  const parts = [];
-  const images = [];
+  const parts: string[] = [];
+  const images: Prompt['images'] = [];
   for (const msg of conv.messages.slice(from)) {
     if (msg.role === 'user') {
       parts.push(userText(msg, userName, skills, group, nameOf, conv.messages));
@@ -32,7 +41,7 @@ function pendingPrompt(conv, botId, { bots, userName, skills = [] }, from = 0) {
         if (m) images.push({ mediaType: m[1], data: m[2] });
       }
     } else if (msg.role === 'assistant' && msg.botId !== botId && msg.content) {
-      parts.push(`[${nameOf(msg.botId)}]: ${msg.content}`);
+      parts.push(`[${nameOf(msg.botId || '')}]: ${msg.content}`);
     }
   }
   return { text: parts.join('\n\n'), images };
@@ -40,9 +49,9 @@ function pendingPrompt(conv, botId, { bots, userName, skills = [] }, from = 0) {
 
 // Returns member bot ids @mentioned in text, longest names first so
 // "@RO Agent" doesn't also match a bot called "RO".
-function mentionedBots(text, members) {
+function mentionedBots(text: string, members: Pick<Bot, 'id' | 'name'>[]): string[] {
   const lower = text.toLowerCase();
-  const found = [];
+  const found: { id: string; at: number }[] = [];
   let rest = lower;
   for (const bot of [...members].sort((a, b) => b.name.length - a.name.length)) {
     const tag = `@${bot.name.toLowerCase()}`;
@@ -54,4 +63,4 @@ function mentionedBots(text, members) {
   return found.sort((a, b) => a.at - b.at).map((f) => f.id);
 }
 
-module.exports = { pendingPrompt, mentionedBots };
+export { pendingPrompt, mentionedBots };

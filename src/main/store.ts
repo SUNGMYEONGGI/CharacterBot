@@ -1,9 +1,10 @@
-const fs = require('node:fs');
+import fs from 'node:fs';
+import type { Bot, Conv, State } from '../shared/types';
 
 const COLORS = ['#f7931a', '#ef3b4b', '#20b15a', '#f26a1b', '#2f7cf6', '#8b5cf6', '#111111'];
-const id = (prefix) => `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+const id = (prefix: string): string => `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
-function newBot(name, index) {
+function newBot(name: string, index: number): Bot {
   return {
     id: id('bot'),
     name,
@@ -18,11 +19,11 @@ function newBot(name, index) {
   };
 }
 
-function newConv(kind, botIds, name = '') {
+function newConv(kind: Conv['kind'], botIds: string[], name = ''): Conv {
   return { id: id('conv'), kind, name, botIds, messages: [], sessions: {}, updatedAt: Date.now() };
 }
 
-function defaultState() {
+function defaultState(): State {
   const bot = newBot('Grok', 0);
   return {
     settings: {
@@ -45,6 +46,7 @@ function defaultState() {
       blockAccountWrites: true,
     },
     bots: [bot],
+    sections: [],
     convs: [newConv('dm', [bot.id])],
     skills: [],
     mcpServers: [],
@@ -58,7 +60,8 @@ function defaultState() {
 
 // Fills in fields added after a state file was written, and converts the
 // first version's `{ agents: [...] }` layout.
-function migrate(raw) {
+// The file is untyped JSON from any past version.
+function migrate(raw: any): State {
   const defaults = defaultState();
   const state = { ...defaults, ...raw, settings: { ...defaults.settings, ...raw.settings }, usage: { ...defaults.usage, ...raw.usage } };
   delete state.settings.baseUrl;
@@ -67,14 +70,14 @@ function migrate(raw) {
   if (!raw.settings?.fullAccess && raw.settings) Object.assign(state.settings, { computerAccess: 'allow', fullAccess: true });
   if (/^(grok|gpt)/.test(state.settings.model)) state.settings.model = ''; // left over from the OpenAI-compatible version
   if (raw.agents && !raw.bots) {
-    state.bots = raw.agents.map(({ messages, ...a }) => ({ ...newBot(a.name, 0), ...a }));
-    state.convs = raw.agents.map((a) => ({ ...newConv('dm', [a.id]), messages: a.messages.map((m) => ({ id: id('msg'), ts: Date.now(), ...m, botId: m.role === 'assistant' ? a.id : undefined })) }));
+    state.bots = raw.agents.map(({ messages: _, ...a }: any) => ({ ...newBot(a.name, 0), ...a }));
+    state.convs = raw.agents.map((a: any) => ({ ...newConv('dm', [a.id]), messages: a.messages.map((m: any) => ({ id: id('msg'), ts: Date.now(), ...m, botId: m.role === 'assistant' ? a.id : undefined })) }));
     delete state.agents;
   }
   return state;
 }
 
-function load(file) {
+function load(file: string): State {
   try {
     return migrate(JSON.parse(fs.readFileSync(file, 'utf8')));
   } catch {
@@ -82,10 +85,10 @@ function load(file) {
   }
 }
 
-function save(file, state) {
+function save(file: string, state: State): void {
   // Write to a temp file first so a crash mid-write can't corrupt history.
   fs.writeFileSync(`${file}.tmp`, JSON.stringify(state));
   fs.renameSync(`${file}.tmp`, file);
 }
 
-module.exports = { id, newBot, newConv, defaultState, load, save, COLORS };
+export { id, newBot, newConv, defaultState, load, save, COLORS };

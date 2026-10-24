@@ -1,12 +1,24 @@
 name: Release
 
+# Every push to main that touches the app becomes a new release. The version is
+# package.json's major.minor plus this workflow's run number, so nobody has to bump it.
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths-ignore:
+      - 'site/**'
+      - 'scripts/build-site.mjs'
+      - '**.md'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   mac:
@@ -18,14 +30,28 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run typecheck
       - run: npm test
-      - name: Build and upload to a draft release
-        run: npx electron-builder --mac --arm64 --publish always
+      - name: Set version
+        id: version
+        run: |
+          base=$(node -p "require('./package.json').version.split('.').slice(0, 2).join('.')")
+          version="$base.${{ github.run_number }}"
+          npm version "$version" --no-git-tag-version
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Build
+        run: npm run build && npx electron-builder --mac --arm64 --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Publish release
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            dist/CharacterBot-arm64.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml \
+            --target "$GITHUB_SHA" --title "CharacterBot ${{ steps.version.outputs.version }}" --generate-notes --latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

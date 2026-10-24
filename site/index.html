@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CharacterBot</title>
+<meta name="description" content="A team of AI bots that lives on your Mac and runs on the Claude and ChatGPT subscriptions you already have.">
+<meta property="og:title" content="CharacterBot">
+<meta property="og:description" content="A team of AI bots that lives on your Mac and runs on the Claude and ChatGPT subscriptions you already have.">
+<meta property="og:image" content="icon.png">
+<link rel="icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script type="module" src="main.js"></script>
+</head>
+<body>
+<header class="nav">
+  <a class="brand" href="./"><img src="icon.png" width="32" height="32" alt=""> CharacterBot</a>
+  <nav>
+    <a href="#features">Features</a>
+    <a href="#install">Install</a>
+    <a href="#faq">FAQ</a>
+    <a href="https://github.com/SUNGMYEONGGI/CharacterBot">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="cast" id="cast" aria-hidden="true"></div>
+    <h1>Hire a team of bots that work on your Mac.</h1>
+    <p class="lede">Give each bot a name, a role and a folder of its own, then talk to them in DMs, groups and threads. They run on the Claude and ChatGPT subscriptions you already pay for, with no API keys and no server.</p>
+    <div class="cta">
+      <a class="btn primary download" href="https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest/download/CharacterBot-arm64.dmg">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9-1.7 0-3.3 1-4.2 2.6-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.2 2.6 1.3-.1 1.8-.8 3.3-.8 1.6 0 2 .8 3.4.8 1.4 0 2.3-1.3 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9 0 0-2.7-1-2.7-4.1zM13.9 4.9c.7-.9 1.2-2 1.1-3.2-1 0-2.3.7-3 1.6-.7.8-1.2 2-1.1 3.1 1.1.1 2.3-.6 3-1.5z"/></svg>
+        Download for Mac
+      </a>
+      <a class="btn" href="https://github.com/SUNGMYEONGGI/CharacterBot">View source</a>
+    </div>
+    <p class="release" id="release">Apple silicon, macOS 12 or later. Free and open source under Apache 2.0.</p>
+  </section>
+
+  <section class="demo" aria-label="A group chat in CharacterBot">
+    <div class="window">
+      <div class="titlebar"><i></i><i></i><i></i><span>Launch team</span></div>
+      <div class="thread" id="thread"></div>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <h2>What your bots can do</h2>
+    <dl>
+      <div><dt>Work as a team</dt><dd>Your main bot knows everyone's role and hands work to the others. In a thread, anyone can pull another bot in with @name.</dd></div>
+      <div><dt>Use your computer</dt><dd>Each bot gets its own folder. It can read, write and run things there, and the files it makes land in the Library panel.</dd></div>
+      <div><dt>Connect your apps</dt><dd>Add Gmail, Slack, Notion, GitHub and more through MCP. Writes to accounts you own are blocked by default, so a bot can read your inbox but not send from it.</dd></div>
+      <div><dt>Ask before it acts</dt><dd>Messages and emails arrive as editable drafts. Approve once, always, or never, and every action is written to an activity log.</dd></div>
+      <div><dt>Run on a schedule</dt><dd>Ask for a morning briefing or an hourly inbox check. Routines also fire on webhooks, folder changes and GitHub pull requests.</dd></div>
+      <div><dt>Remember you</dt><dd>Bots keep a short memory of facts about you that you can edit, and you can import what another assistant already knows.</dd></div>
+      <div><dt>Talk out loud</dt><dd>Send voice memos or hold a spoken conversation. Speech is transcribed on your Mac.</dd></div>
+      <div><dt>Mix models</dt><dd>Pick any Claude model your plan offers, or a ChatGPT model through Codex, per bot.</dd></div>
+    </dl>
+  </section>
+
+  <section class="local">
+    <h2>Everything stays on your Mac</h2>
+    <p>CharacterBot signs in through the Claude Code and Codex logins on this computer. Conversations, memories and files live in your Library folder, and secrets are encrypted with the macOS Keychain. There is no CharacterBot server to send them to.</p>
+  </section>
+
+  <section class="install" id="install">
+    <h2>Install</h2>
+    <ol>
+      <li><b>Download the app.</b> Get <a id="dmg-link" href="https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest/download/CharacterBot-arm64.dmg">CharacterBot-arm64.dmg</a> and drag CharacterBot to Applications.</li>
+      <li><b>Open it the first time.</b> The app isn't notarized yet, so right-click it and choose Open, or run <code>xattr -dr com.apple.quarantine /Applications/CharacterBot.app</code>.</li>
+      <li><b>Sign in to Claude.</b> Install <a href="https://docs.claude.com/en/docs/claude-code">Claude Code</a> and log in, or connect in Settings. Add ChatGPT there too if you want ChatGPT bots and images.</li>
+      <li><b>Say hello.</b> Your first bot is waiting in the sidebar. Press ⌘N to hire another.</li>
+    </ol>
+  </section>
+
+  <section class="faq" id="faq">
+    <h2>Questions</h2>
+    <details><summary>What does it cost?</summary><p>The app is free. Bots use your own Claude subscription (Pro or Max) or an Anthropic API key, and optionally your ChatGPT subscription, so usage counts against those plans.</p></details>
+    <details><summary>Which Macs does it run on?</summary><p>Macs with Apple silicon. Intel Macs, Windows and Linux aren't supported yet, though you can try building from source.</p></details>
+    <details><summary>Is the interface in English?</summary><p>Not yet. Labels are in Korean. Bots answer in whatever language you write to them.</p></details>
+    <details><summary>Can a bot send email or post to Slack as me?</summary><p>Not by default. "Block writes to my account apps" is on, so bots can only read from apps signed in as you. Turn it off in Settings › Computer if you want drafts you approve to go out.</p></details>
+    <details><summary>How do updates work?</summary><p>Every change merged to the main branch is built and published as a new release. The download button on this page always points to the latest one.</p></details>
+    <details><summary>Is this affiliated with Anthropic, OpenAI or xAI?</summary><p>No. CharacterBot is an independent open-source project.</p></details>
+  </section>
+</main>
+
+<footer>
+  <span>CharacterBot · Apache 2.0</span>
+  <a href="https://github.com/SUNGMYEONGGI/CharacterBot/releases">Releases</a>
+  <a href="https://github.com/SUNGMYEONGGI/CharacterBot/issues">Report a problem</a>
+</footer>
+</body>
+</html>

@@ -1,6 +1,6 @@
 // Each service's own icon, downloaded from its website (apple-touch-icon or
 // favicon) or Wikimedia Commons. Used only to identify the service to connect.
-export const LOGOS = {
+export const LOGOS: Record<string, string> = {
   "agentmail": "logos/agentmail.png",
   "airtable": "logos/airtable.png",
   "amplitude": "logos/amplitude.png",

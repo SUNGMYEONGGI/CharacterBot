@@ -3,9 +3,10 @@
 //   claude    – Claude subscription, signed in with the Claude Code OAuth login
 //   anthropic – Anthropic API key
 //   custom    – any Anthropic-compatible endpoint (base URL + key)
-const { execFile } = require('node:child_process');
+import { execFile } from 'node:child_process';
+import type { LoginStatus, Provider } from '../shared/types';
 
-const KINDS = {
+const KINDS: Record<Provider['kind'], { title: string; sub: string; group: string }> = {
   claude: { title: 'Claude', sub: 'Subscription', group: 'Subscription' },
   anthropic: { title: 'Anthropic', sub: 'API', group: 'API' },
   custom: { title: '사용자 지정', sub: 'API', group: 'API' },
@@ -28,24 +29,24 @@ function cleanEnv() {
   return env;
 }
 
-function run(args, timeout) {
+function run(args: string[], timeout: number): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(claudeBin(), args, { env: cleanEnv(), timeout }, (err, stdout, stderr) => {
-      if (err) reject(new Error((stderr || err.message).trim().split('\n').pop()));
+      if (err) reject(new Error((stderr || err.message).trim().split('\n').pop() || err.message));
       else resolve(stdout);
     });
   });
 }
 
 // { loggedIn, email, plan } for the Claude Code login on this computer.
-async function claudeStatus() {
+async function claudeStatus(): Promise<LoginStatus & { org: string }> {
   const s = JSON.parse(await run(['auth', 'status', '--json'], 20_000));
   const subscription = s.loggedIn && s.authMethod === 'claude.ai';
   return { loggedIn: subscription, email: s.email || '', plan: s.subscriptionType || '', org: s.orgName || '' };
 }
 
 // Opens the browser for the Claude OAuth sign-in and waits for it to finish.
-async function claudeLogin(email) {
+async function claudeLogin(email?: string) {
   await run(['auth', 'login', '--claudeai', ...(email ? ['--email', email] : [])], 10 * 60_000);
   return claudeStatus();
 }
@@ -54,7 +55,7 @@ async function claudeLogin(email) {
 const claudeLogout = () => run(['auth', 'logout'], 20_000);
 
 // Environment for an SDK query on `provider`. `key` is the provider's stored secret.
-function env(base, provider, key) {
+function env(base: NodeJS.ProcessEnv, provider: Provider | undefined, key: string | undefined): NodeJS.ProcessEnv {
   const out = { ...base };
   delete out.ANTHROPIC_API_KEY;
   delete out.ANTHROPIC_AUTH_TOKEN;
@@ -70,4 +71,4 @@ function env(base, provider, key) {
   return out;
 }
 
-module.exports = { KINDS, claudeStatus, claudeLogin, claudeLogout, env };
+export { KINDS, claudeStatus, claudeLogin, claudeLogout, env };

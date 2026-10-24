@@ -1,16 +1,16 @@
 // Reads a plugin folder: a manifest plus bundled MCP servers and skills.
 // Accepts this app's `plugin.json` and the Claude Code / Cursor layouts
 // (`.claude-plugin/plugin.json`, `.cursor-plugin/plugin.json`, `.mcp.json`).
-const fs = require('node:fs');
-const path = require('node:path');
+import fs from 'node:fs';
+import path from 'node:path';
 
-const readJson = (file) => (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null);
+const readJson = (file: string) => (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null);
 
 // Minimal YAML frontmatter: `key: value` lines between --- fences.
-function parseSkillFile(text) {
+function parseSkillFile(text: string): { meta: Record<string, string>; body: string } {
   const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!m) return { meta: {}, body: text.trim() };
-  const meta = {};
+  const meta: Record<string, string> = {};
   for (const line of m[1].split(/\r?\n/)) {
     const kv = line.match(/^([A-Za-z_-]+):\s*(.*)$/);
     if (kv) meta[kv[1]] = kv[2].replace(/^["']|["']$/g, '');
@@ -18,7 +18,13 @@ function parseSkillFile(text) {
   return { meta, body: m[2].trim() };
 }
 
-function readPlugin(dir) {
+export interface PluginSkill {
+  name: string;
+  description: string;
+  body: string;
+}
+
+function readPlugin(dir: string) {
   const manifest = readJson(path.join(dir, 'plugin.json'))
     || readJson(path.join(dir, '.claude-plugin', 'plugin.json'))
     || readJson(path.join(dir, '.cursor-plugin', 'plugin.json'));
@@ -28,7 +34,7 @@ function readPlugin(dir) {
     ? manifest.mcpServers
     : readJson(path.join(dir, '.mcp.json'))?.mcpServers || {};
 
-  const skills = [];
+  const skills: PluginSkill[] = [];
   const skillsDir = path.join(dir, 'skills');
   if (fs.existsSync(skillsDir)) {
     for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
@@ -40,7 +46,10 @@ function readPlugin(dir) {
   }
   // ${CLAUDE_PLUGIN_ROOT} lets bundled servers point at files inside the plugin.
   const servers = JSON.parse(JSON.stringify(mcpServers).replaceAll('${CLAUDE_PLUGIN_ROOT}', dir.replaceAll('\\', '\\\\')));
-  return { name: manifest.name, description: manifest.description || '', version: manifest.version || '', mcpServers: servers, skills };
+  return {
+    name: String(manifest.name), description: String(manifest.description || ''), version: String(manifest.version || ''),
+    mcpServers: servers as Record<string, Record<string, unknown>>, skills,
+  };
 }
 
-module.exports = { readPlugin, parseSkillFile };
+export { readPlugin, parseSkillFile };

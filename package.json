@@ -5,11 +5,14 @@
   "description": "Desktop AI bot team on your own Claude and ChatGPT subscriptions",
   "author": "SUNGMYEONGGI",
   "private": true,
-  "main": "main.cjs",
+  "main": "out/main.cjs",
   "scripts": {
-    "start": "electron .",
-    "test": "node test.cjs",
-    "dist": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64"
+    "build": "node scripts/build.mjs",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc -p .",
+    "test": "tsx test/main.test.ts",
+    "dist": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64",
+    "site": "node scripts/build-site.mjs"
   },
   "build": {
     "appId": "com.sungmyeonggi.characterbot",
@@ -19,15 +22,12 @@
       "buildResources": "build"
     },
     "files": [
-      "**/*",
-      "!build/**",
-      "!dist/**",
-      "!test.cjs",
-      "!*.md",
-      "!.github/**"
+      "out/**",
+      "!out/**/*.map",
+      "package.json"
     ],
     "asarUnpack": [
-      "stt.swift",
+      "out/stt.swift",
       "node_modules/@anthropic-ai/claude-agent-sdk-*/**",
       "node_modules/@openai/codex-*/**"
     ],
@@ -47,7 +47,8 @@
       }
     },
     "dmg": {
-      "title": "CharacterBot"
+      "title": "CharacterBot",
+      "artifactName": "${productName}-${arch}.${ext}"
     },
     "publish": {
       "provider": "github",
@@ -57,8 +58,17 @@
     "afterPack": "build/adhoc-sign.cjs"
   },
   "devDependencies": {
+    "@types/katex": "^0.16.8",
+    "@types/node": "^22.20.5",
+    "dompurify": "3.4.16",
     "electron": "38.2.0",
-    "electron-builder": "^26.0.12"
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.11",
+    "katex": "0.16.47",
+    "marked": "18.1.0",
+    "mermaid": "11.17.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
   },
   "allowScripts": {
     "electron@38.2.0": true
@@ -67,10 +77,6 @@
     "@anthropic-ai/claude-agent-sdk": "0.3.295",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@openai/codex-sdk": "^0.163.0",
-    "dompurify": "3.4.16",
-    "katex": "0.16.47",
-    "marked": "18.1.0",
-    "mermaid": "11.17.2",
     "zod": "4.6.5"
   },
   "license": "Apache-2.0"
