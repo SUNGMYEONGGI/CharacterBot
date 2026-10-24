@@ -1,153 +1,292 @@
-<p align="center">
-  <img src="build/icon.png" width="128" alt="CharacterBot">
-</p>
+<div align="center">
 
-<h1 align="center">CharacterBot</h1>
+<img src="build/icon.png" width="128" alt="CharacterBot icon">
 
-<p align="center">
-  <b>내 구독으로 돌아가는, 내 Mac 위의 AI Bot 팀</b><br>
-  Claude·ChatGPT 구독만 있으면 API 키 없이 여러 Bot을 동료처럼 부리는 데스크톱 앱
-</p>
+# CharacterBot
 
-<p align="center">
-  <a href="https://github.com/SUNGMYEONGGI/CharacterBot/releases">다운로드</a> ·
-  <a href="#빠른-시작">빠른 시작</a> ·
-  <a href="#구조">구조</a> ·
-  <a href="#보안-모델">보안 모델</a> ·
-  <a href="#빌드와-배포">빌드와 배포</a>
-</p>
+**A team of AI coworkers that lives on your Mac and runs on the subscriptions you already pay for.** Give each Bot a name, a personality, a model, a memory and a folder of its own, then talk to them the way you talk to people: in DMs, in groups and in threads.
 
-> **알파 버전.** 개인용 프로토타입입니다. 실제 업무에 쓰기 전에 [보안 모델](#보안-모델)과 [한계](#한계)를 먼저 읽어 주세요.
+Claude Bots run on the Claude Agent SDK with your Claude login. ChatGPT Bots and image generation run on the Codex SDK with your ChatGPT login. No API keys, no server, no database: one desktop app, and everything stays on your machine.
 
----
+[**Download**](https://github.com/SUNGMYEONGGI/CharacterBot/releases) · [**Quick start**](#quick-start) · [**Features**](#features) · [**Architecture**](#architecture) · [**Security model**](#security-model) · [**Build and release**](#build-and-release)
 
-## CharacterBot이란
+[![CI](https://github.com/SUNGMYEONGGI/CharacterBot/actions/workflows/ci.yml/badge.svg)](https://github.com/SUNGMYEONGGI/CharacterBot/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](./LICENSE)
+![Platform: macOS arm64](https://img.shields.io/badge/platform-macOS%20arm64-lightgrey.svg)
+![Alpha](https://img.shields.io/badge/status-alpha-orange.svg)
 
-CharacterBot은 Bot마다 이름, 성격(시스템 프롬프트), 모델, 기억, 작업 폴더를 따로 주고 메신저처럼 대화하는 데스크톱 앱입니다. Bot끼리 일을 나눠 맡고, 스레드에서 서로 대화하고, 정해진 시간이나 이벤트에 맞춰 스스로 일합니다.
+</div>
 
-- **구독 기반.** Claude Bot은 [Claude Agent SDK](https://docs.claude.com/en/docs/agent-sdk/overview)로, ChatGPT Bot과 이미지 생성은 [Codex SDK](https://github.com/openai/codex)로 실행합니다. 이 컴퓨터의 Claude Code·Codex 로그인을 그대로 쓰므로 API 키가 필요 없습니다.
-- **앱 하나.** 서버, DB, Docker 없이 Electron 앱 하나로 돌아갑니다. 데이터는 전부 내 Mac에 남습니다.
-- **Bot 팀.** 메인 Bot(★)이 요청을 받아 다른 Bot에게 나눠 맡기고 결과를 모아 보고합니다.
+> **Alpha, and a personal project.** CharacterBot is early. It has been exercised by hand, not evaluated on real workloads. Expect rough edges, and read [Security model](#security-model) and [Limitations](#limitations) before you point it at anything that matters.
 
-## 기능
+> **Your subscriptions, your machine.** CharacterBot signs in through the Claude Code and Codex logins on this computer. It never asks for your password, never ships an OAuth client of its own for those logins, and keeps every conversation, memory and file under `~/Library/Application Support`.
 
-| 영역 | 기능 |
-|---|---|
-| **대화** | DM, 그룹 채팅, 스레드, 리액션, 작업 중 표시("A, B 작업 중…"), 대화 압축(긴 대화 자동 요약) |
-| **Bot 팀** | 메인 Bot 오케스트레이션, `message_bot`으로 Bot 간 위임, 스레드에서 `@이름`으로 다른 Bot 호출 |
-| **Bot마다** | 시스템 프롬프트, 모델, 스킬, MCP 서버, 기억(편집 가능), 전용 작업 폴더, 프로필 아이콘 |
-| **루틴** | 매일·주기 실행, 웹훅(`POST /hook/<key>`), 폴더 변경 감지, GitHub PR 변경 감지 |
-| **앱 연결** | 원격·로컬 MCP 서버, OAuth 로그인, 비밀값은 OS 암호화 저장소(safeStorage)에 보관 |
-| **승인** | 질문 카드, 초안 편집 후 승인 카드, 자동 검토 규칙, 활동 기록 |
-| **음성** | 기기 안 음성 인식(macOS Speech)으로 음성 메모와 음성 채팅 |
-| **결과물** | 마크다운, Mermaid, KaTeX, CSV 표, HTML 미리보기, ChatGPT 이미지 생성 |
-| **편의** | 명령 팔레트, 단축키, 사이드바 섹션·고정·숨기기, 알림과 Dock 배지, 백그라운드 작업 패널 |
-| **가져오기** | Bot 템플릿, CSV로 Bot 일괄 생성, 다른 AI의 기억 가져오기 |
+> **The UI is in Korean.** Labels and the Bots' default instructions are written in Korean. The Bots answer in whatever language you write to them.
 
-## 빠른 시작
+## What it is
 
-### 요구 사항
+A desktop chat app in which every contact is an agent. A fresh install starts with one Bot, **Grok**, which is also the **main Bot** (★): the first one you talk to, and the one that hands work to the others. Add more from `⌘N`, from a template, or from a CSV file.
 
-- macOS (Apple Silicon)
-- Node.js 22 이상
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) 로그인 (`claude` 실행 후 로그인)
-- ChatGPT Bot·이미지 생성을 쓰려면 Codex 로그인 (앱 설정에서 진행)
-- 음성 기능을 쓰려면 Xcode Command Line Tools (`xcode-select --install`)
+Each Bot is configuration, not code:
 
-### 개발 모드로 실행
+- a **name, label, color and avatar** (shapes, or a profile icon generated with ChatGPT),
+- a **system prompt** that sets its role and personality,
+- a **model**: any Claude model your subscription offers, or a ChatGPT model through Codex,
+- **skills** it can load on demand and **MCP servers** it may use,
+- a **memory**: a list of facts about you that it reads every turn and you can edit,
+- a **workspace**: its own folder, which is "its computer". Files it saves there show up in the library panel.
 
-```bash
+Bots work together. The main Bot gets a list of the team and their roles in its system prompt, and delegates with `message_bot`. Independent tasks go to several Bots at once. In a thread, anybody, human or Bot, can pull another Bot in with `@name`, and the Bots carry the conversation between themselves while you watch or step in.
+
+Everything a Bot does to your computer or to a connected app passes through one gateway that decides first and records afterwards. See [Security model](#security-model).
+
+## Built on two agent SDKs
+
+| Engine | Used for | Authenticates with |
+| --- | --- | --- |
+| [Claude Agent SDK](https://docs.claude.com/en/docs/agent-sdk/overview) (`@anthropic-ai/claude-agent-sdk`) | Claude Bots, conversation summaries | The Claude Code login on this Mac (subscription), or an Anthropic API key, or any Anthropic-compatible endpoint |
+| [Codex SDK](https://github.com/openai/codex) (`@openai/codex-sdk`) | ChatGPT Bots, image generation, profile icons | The Codex (ChatGPT) login, kept in an app-private `CODEX_HOME` |
+
+Both engines see the same app tools (`ask_user`, `remember`, `message_bot`, ...). Claude Bots get them from an in-process MCP server; Codex Bots get them from a loopback streamable-HTTP MCP server that opens for one turn, on a random port, behind a per-turn bearer token.
+
+## Requirements
+
+- macOS on Apple Silicon (arm64)
+- Node.js 22 or later (to run from source)
+- A Claude subscription, signed in with [Claude Code](https://docs.claude.com/en/docs/claude-code) (`claude`, then log in). An Anthropic API key also works.
+- Optional: a ChatGPT subscription for ChatGPT Bots and image generation (sign in from 설정 › 일반)
+- Optional: Xcode Command Line Tools (`xcode-select --install`) for on-device speech recognition
+- Optional: the GitHub CLI (`gh auth login`) for GitHub pull request triggers
+
+## Quick start
+
+### From a release
+
+1. Download `CharacterBot-<version>-arm64.dmg` from [Releases](https://github.com/SUNGMYEONGGI/CharacterBot/releases).
+2. Drag **CharacterBot** to Applications.
+3. Builds without a Developer ID signature are ad-hoc signed, so Gatekeeper stops the first launch. Right-click the app › **Open**, or run:
+
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/CharacterBot.app
+   ```
+
+### From source
+
+```sh
 git clone https://github.com/SUNGMYEONGGI/CharacterBot.git
 cd CharacterBot
 npm install
 npm start
 ```
 
-### 앱으로 설치
+The app picks up your Claude Code login on first launch. If it does not, open 설정 (`⌘,`) › 일반 and sign in to Claude there.
 
-[Releases](https://github.com/SUNGMYEONGGI/CharacterBot/releases)에서 `CharacterBot-<버전>-arm64.dmg`를 받아 응용 프로그램 폴더로 옮깁니다.
+## Try it
 
-> Developer ID로 서명하지 않은 빌드는 처음 열 때 Gatekeeper가 막습니다. Finder에서 앱을 **우클릭 › 열기**로 한 번 열거나 `xattr -dr com.apple.quarantine /Applications/CharacterBot.app`을 실행하세요.
+- Say hello to **Grok**, then ask it to create two Bots with different roles (or press `⌘N`).
+- Ask the main Bot something that needs both of them. Watch the activity row ("A, B 작업 중…") and open the background tasks panel.
+- Reply in a thread and write `@<Bot name>` to bring another Bot in; tell them to discuss and come back with one answer.
+- Ask a Bot to `remember` something about you, then open its settings and edit the memory.
+- Ask a Bot to check something every morning at 9, or whenever a file lands in `~/Downloads`. It creates a routine.
+- Use the mic button for a voice memo, or start voice chat (wave button) and talk back and forth.
+- Add a ChatGPT Bot and ask it to draw something.
 
-## 구조
+## Main surfaces
+
+| Surface | Purpose |
+| --- | --- |
+| Sidebar | Bots, groups and sections. Pinned first, unread dots, ★ on the main Bot. Right-click for pin, move to section, mark unread, rename, set as main Bot, hide, delete. |
+| Chat | DMs and group chats with streaming replies, reactions, attachments, rich rendering, question cards and approval cards. |
+| Threads | Side conversations under any message. `@name` pulls in any Bot; Bots reply to each other there. |
+| Right panel | The Bot's profile, memory, skills, MCP servers, and its workspace library (files it made, viewable in-app). |
+| Tasks panel | Running and recent background runs, with who is working on what. |
+| `+` menu | New Bot, new group, templates, import Bots from CSV, import memory from another assistant. |
+| 앱 연결 (`⇧⌘M`) | A catalog of 51 MCP apps (Google Workspace, Notion, Linear, GitHub, Figma, ...), custom MCP servers, `mcp.json` import, plugins. |
+| 설정 (`⌘,`) | Four tabs: **일반** (account, providers, models, appearance, notifications), **컴퓨터** (what Bots may do on this Mac, review rules), **사용량 및 청구** (subscription usage), **업데이트**. |
+| Skills (`⇧⌘W`), Routines, Activity log | Opened from the command palette (`⌘K`), Bot settings and the support menu. |
+
+### Keyboard shortcuts
+
+| Keys | Action |
+| --- | --- |
+| `⌘K` | Go to / run a command |
+| `⌘N` | New Bot |
+| `⌘,` | Settings |
+| `⇧⌘M` | Connect apps |
+| `⇧⌘W` | Skills |
+| `⇧⌘F` | Find a Bot |
+| `⌘I` | Focus the composer |
+| `⌘B` | Toggle the sidebar |
+| `⌥↑` / `⌥↓` | Previous / next chat |
+| `⌘[` / `⌘]` | Back / forward |
+
+## Features
+
+- **Subscription first**: Claude Bots use the Claude Code OAuth login; ChatGPT Bots use the Codex login. API keys are optional, for those who want them, and are stored encrypted.
+- **A main Bot that orchestrates**: one Bot is ★ main. Its system prompt lists the team with each role and tells it to delegate through `message_bot`, collect results, and report. Independent tasks are sent in parallel. The main Bot cannot be deleted until another takes its place.
+- **Bot-to-Bot delegation**: `message_bot` drops a message in the target Bot's DM and returns its answer. If the target is busy, the call waits up to 10 minutes rather than fail.
+- **Threads where Bots talk to each other**: mentions in a thread reach any Bot; without a mention the thread's participants answer. Replies hand off from Bot to Bot inside the thread.
+- **Who is doing what**: pulsing dots in the Bot's color while it works, an activity row naming every Bot at work, and a tasks panel with the last 30 runs.
+- **Memory you can edit**: Bots save facts with `remember` and drop them with `forget`. Edit any entry inline, or import up to 200 at once from another assistant with a copy-paste prompt.
+- **Long conversations stay usable**: when a new session would replay more than 40,000 characters of history, older messages are summarized with Haiku and the last 20 are kept verbatim. The summary is cached and refreshed after 40 more messages. 대화 압축 does it on demand.
+- **Routines on a clock**: daily at `HH:MM`, or every N minutes with a 15-minute floor. At most 20 enabled, and 10 failures in a row switch a routine off.
+- **Routines on events**:
+  - **Webhook**: `POST http://127.0.0.1:47819/hook/<key>` with any body (up to 64 KB). Loopback only; the key is 24 random hex characters.
+  - **Folder**: any change under a folder, recursively, debounced by 5 seconds.
+  - **GitHub**: a pull request opened or updated in `owner/name`, polled every 5 minutes through `gh`. The first poll is a baseline.
+
+  Events that arrive while the chat is busy, or within 60 seconds of the last run, queue (up to 5) instead of being dropped.
+- **Cards instead of guesses**: `ask_user` shows a choice card and the Bot waits. A draft to an outside app arrives as an editable approval card, and what you edit is what is sent.
+- **Voice, on the device**: voice memos and turn-based voice chat use macOS Speech through a small Swift helper compiled on first use. Nothing leaves the machine for transcription. Voice chat replies are spoken with the system voice.
+- **Rich answers**: Markdown, Mermaid diagrams, KaTeX math, CSV as tables, HTML files previewed in-app, generated images inline.
+- **Skills**: instructions a Bot loads by name with `use_skill`. A Bot can propose one with `propose_skill`, and it is saved only when you press the button on the card.
+- **Apps over MCP**: remote (URL, OAuth) and local (stdio) MCP servers, a catalog of 51, `mcp.json` import, and per-Bot grants. Google apps take a Google OAuth client you register once.
+- **Notifications**: a system notification and a Dock badge for every approval or question waiting on you.
+- **Import and export**: Bots export to `<name>.grokbot.json` templates and import back; Bots import in bulk from CSV (up to 50).
+
+## Bot tools
+
+The tools every Bot gets from the app, on top of the file, shell and web tools of its engine:
+
+| Tool | What it does |
+| --- | --- |
+| `ask_user` | Shows a question card with options; the Bot ends its turn and waits for the answer. |
+| `remember` / `forget` | Adds or removes an entry in the Bot's memory. |
+| `message_bot` | Sends another Bot a DM and returns its reply. |
+| `schedule_routine` | Creates a routine in this chat: `every_minutes`, `daily_time`, `webhook`, `watch_path` or `github_repo`. |
+| `cancel_routine` | Switches a routine off. |
+| `use_skill` | Loads a skill's full instructions. |
+| `propose_skill` | Proposes a new skill as a card; saved on your click. |
+| `request_meeting_approval` | Asks whether to accept a meeting invite you did not request; your answer grants one calendar reply. |
+
+## Security model
+
+- **One gateway**: every tool call, including those of subagents, passes a single `PreToolUse` hook. The decision is `allow`, `ask` or `deny`; anything the hook does not approve is refused by the SDK's permission callback.
+- **Rules, deny first**: your rules match on tool name (glob), Bot, and a regular expression over the arguments. `deny` is evaluated before `allow`, then `ask`. A broken pattern never widens access.
+- **Natural-language review rules**: "ask me before anything that sends email" and the like, judged per call; when rules disagree, asking wins.
+- **Outside apps ask before writing**: a connected app's tool that is not a read (`list`, `get`, `search`, `read`, ...) asks first by default.
+- **Account writes are blocked** (`blockAccountWrites`, on by default): writes to apps tied to your own accounts (claude.ai connectors and remote OAuth MCP servers, such as Slack or Gmail) are refused outright, whatever the rules say.
+- **Nobody watching means no**: in a scheduled run, `ask` fails closed.
+- **Codex Bots are fenced in**: an app-private `CODEX_HOME`, with apps, plugins, computer use and the browser switched off. Only the app's own tools are mounted.
+- **Your Claude setup stays out**: Bots run with `settingSources: []`, so your `~/.claude` hooks, `CLAUDE.md` and plugins never reach them.
+- **Secrets encrypted at rest**: OAuth tokens, API keys and MCP secrets live in `secrets.bin`, encrypted with Electron `safeStorage` (the macOS Keychain), and show only masked in the UI.
+- **Loopback only**: the webhook server and the per-turn MCP endpoint bind to `127.0.0.1`.
+- **A readable trail**: the activity log keeps the last 1,000 decisions with the rule that caused each.
+
+> **What it does not stop.** The account-write block covers MCP tools. A Bot runs on your Mac with full permissions by default, so it can still reach an outside API through the shell or HTTP, for example a brokerage or exchange. Do not keep keys to accounts that move money in a Bot's workspace, set 설정 › 컴퓨터 › 이 컴퓨터에서 실행 to 먼저 묻기, and add `deny` rules for such hosts.
+
+## Configuration
+
+Everything is set in the app; there is no `.env`. What is stored where:
+
+| Path (under `~/Library/Application Support/CharacterBot/`) | Contents |
+| --- | --- |
+| `state.json` | Settings, Bots, chats, memories, skills, routines, rules, activity log, usage. |
+| `secrets.bin` | Tokens and keys, encrypted with `safeStorage`. |
+| `workspaces/<botId>/` | Each Bot's folder, its working directory. |
+| `codex/` | The app-private `CODEX_HOME` for ChatGPT Bots. |
+| `icon-studio/`, `codex-inbox/` | Generated images and their inputs. |
+| `bin/stt` | The compiled speech recognition helper. |
+
+Installs from before the rename keep using `~/Library/Application Support/Grok Bot Clone` when it holds the data.
+
+Settings worth knowing:
+
+| Setting | Where | Default |
+| --- | --- | --- |
+| Provider and model | 설정 › 일반 | Claude subscription, default model |
+| 이 컴퓨터에서 실행 | 설정 › 컴퓨터 | 항상 허용 (`allow`) |
+| Full access | 설정 › 컴퓨터 | On |
+| Automatic review | 설정 › 컴퓨터 | On |
+| `blockAccountWrites` | `state.json` › `settings` | `true` |
+| Notifications, theme, accent, spellcheck, time zone, hardware acceleration | 설정 › 일반 | On, system, Bot color, on, auto, on |
+
+## Architecture
 
 ```
-┌──────────────────────── Electron main (main.cjs) ────────────────────────┐
-│                                                                           │
-│  상태 저장 (store.cjs)        게이트웨이 (gateway.cjs)   루틴·트리거       │
-│  state.json + secrets.bin ── 모든 도구 호출 판정 ───── routines.cjs       │
-│                                  ▲                     triggers.cjs      │
-│                                  │                                        │
-│  Claude Bot ── agent.cjs ── Claude Agent SDK ── PreToolUse hook          │
-│  ChatGPT Bot ─ imagegen.cjs ─ Codex SDK ─────── 앱 도구 MCP (HTTP)        │
-│                                  │                                        │
-│                 앱 도구 MCP 서버 (tools.cjs)                               │
-│                 ask_user · remember · message_bot · schedule_routine ...  │
-└──────────────────────────────▲────────────────────────────────────────────┘
-                               │ preload.cjs (window.desktop: init / act / onState)
-┌──────────────────────────────┴──── Renderer ──────────────────────────────┐
-│  app.js (채팅·사이드바) · settings.js · apps.js · rich.js · ui.js           │
-└───────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────── Electron main process ────────────────────────────┐
+│                                                                                │
+│  main.cjs ── actions, Bot turns, delegation, notifications, broadcast          │
+│     │                                                                          │
+│     ├── store.cjs ........ state.json (+ secrets.bin via safeStorage)          │
+│     ├── gateway.cjs ...... allow / ask / deny, account-write block, audit      │
+│     ├── routines.cjs ..... schedules and limits                                │
+│     ├── triggers.cjs ..... webhook server :47819, folder watch, gh polling     │
+│     ├── transcript.cjs ... chat history to prompt                              │
+│     │                                                                          │
+│     ├── agent.cjs ──── Claude Agent SDK ──── PreToolUse hook ──▶ gateway       │
+│     │                       └── in-process MCP: tools.cjs                      │
+│     ├── imagegen.cjs ── Codex SDK ─────── loopback HTTP MCP: tools.cjs         │
+│     │                                                                          │
+│     └── mcp.cjs, oauth.cjs, plugins.cjs ... outside apps                       │
+│                                                                                │
+└──────────────────────────────────────▲─────────────────────────────────────────┘
+                                       │ preload.cjs: window.desktop
+                                       │ init() · act(name, ...args) · onState · onStream
+┌──────────────────────────────────────┴───────── Renderer ──────────────────────┐
+│  app.js (sidebar, chat, threads, panels) · settings.js · apps.js               │
+│  rich.js (Markdown, Mermaid, KaTeX, CSV) · ui.js (elements, icons, popovers)   │
+└────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-| 파일 | 역할 |
-|---|---|
-| `main.cjs` | 앱 상태, 액션, Bot 실행, 위임, 알림 |
-| `agent.cjs` | Claude Agent SDK 실행, 요약 |
-| `imagegen.cjs` | Codex SDK 실행 (ChatGPT Bot, 이미지) |
-| `tools.cjs` | Bot이 쓰는 앱 도구 (in-process MCP + 로컬 HTTP MCP) |
-| `gateway.cjs` | 허용·확인·거부 규칙, 계정 쓰기 차단 |
-| `routines.cjs`, `triggers.cjs` | 일정·이벤트 루틴 |
-| `mcp.cjs`, `oauth.cjs` | 외부 MCP 연결과 OAuth |
-| `transcript.cjs` | 대화 기록을 프롬프트로 변환 |
-| `stt.swift` | 기기 안 음성 인식 |
+| File | Purpose |
+| --- | --- |
+| `main.cjs` | App state and every renderer action, Bot turns, delegation, summaries, routines, notifications. |
+| `agent.cjs` | One Claude turn on the Agent SDK; Haiku summaries. |
+| `imagegen.cjs` | One Codex turn; image and profile icon generation; Codex login status. |
+| `tools.cjs` | The app's tools as an in-process MCP server and as a per-turn loopback HTTP MCP server. |
+| `gateway.cjs` | Rule matching, default effects, the account-write check. |
+| `routines.cjs` | Schedule validation, next run, limits. |
+| `triggers.cjs` | Webhook, folder and GitHub triggers. |
+| `providers.cjs` | Claude login, API key and custom endpoint providers. |
+| `mcp.cjs`, `oauth.cjs`, `plugins.cjs` | Outside MCP servers, their OAuth sign-in, plugins. |
+| `transcript.cjs` | Turns a chat (DM, group, thread) into the next prompt. |
+| `store.cjs` | Default state and migrations. |
+| `stt.swift` | On-device speech recognition. |
+| `preload.cjs` | The bridge: `init`, `act`, `onState`, `onStream`. |
 
-## 보안 모델
+The renderer never touches Node. It calls `act(name, ...args)`; the main process runs the action and broadcasts the new state, and streams tokens over `onStream`.
 
-- **게이트웨이.** Bot의 모든 도구 호출은 `PreToolUse` 훅 하나를 거칩니다. 규칙에 따라 허용, 사용자 확인, 거부 중 하나로 결정하고 활동 기록에 남깁니다. 판정되지 않은 호출은 거부합니다.
-- **계정 쓰기 차단 (`blockAccountWrites`, 기본 켜짐).** Slack, Gmail처럼 내 계정과 연결된 앱에 쓰는 도구 호출은 규칙과 상관없이 거부합니다.
-- **ChatGPT Bot 격리.** Codex는 앱 전용 `CODEX_HOME`에서 돌고, apps·plugins·computer use·browser를 끈 채 앱 도구만 씁니다.
-- **비밀값.** OS 암호화 저장소에 저장하고 화면과 Bot에는 가린 값만 보여 줍니다.
-- **Bot 설정 격리.** 사용자의 `~/.claude` 훅, CLAUDE.md, 플러그인은 Bot에 들어가지 않습니다.
+## Build and release
 
-> **주의.** 계정 쓰기 차단은 MCP 앱 도구에만 적용됩니다. Bot이 셸이나 HTTP로 외부 API(예: 증권사·거래소)를 직접 호출하는 것은 막지 않습니다. Bot은 기본적으로 내 Mac에서 전체 권한으로 실행되므로, 돈이 오가는 계정의 키를 Bot 작업 폴더에 두지 마세요.
+Builds use [electron-builder](https://www.electron.build); the configuration is the `build` field in `package.json`.
 
-## 빌드와 배포
-
-빌드는 [electron-builder](https://www.electron.build)로 합니다. 설정은 `package.json`의 `build` 항목에 있습니다.
-
-```bash
-npm test        # 단위 테스트
-npm run dist    # dist/에 .dmg, .zip 생성 (Apple Silicon)
+```sh
+npm test       # unit tests
+npm run dist   # dist/CharacterBot-<version>-arm64.dmg and -mac.zip
 ```
 
-| 항목 | 내용 |
-|---|---|
-| 앱 ID | `com.sungmyeonggi.characterbot` |
-| 아이콘 | `build/icon.svg`에서 만든 `build/icon.icns` (OctoBot) |
-| 서명 | Developer ID가 없으면 `build/adhoc-sign.cjs`가 ad-hoc 서명 |
-| 실행 파일 | Claude Code·Codex 바이너리와 `stt.swift`는 `app.asar.unpacked`에 풀어 둠 |
+| Item | Value |
+| --- | --- |
+| App ID | `com.sungmyeonggi.characterbot` |
+| Targets | `dmg`, `zip`, arm64 |
+| Icon | `build/icon.icns`, made from `build/source.png` |
+| Unpacked from asar | the Claude Code binary, the Codex binary, `stt.swift`, so they can run |
+| Signing | Developer ID when `CSC_LINK` is set; otherwise `build/adhoc-sign.cjs` signs ad hoc so Apple Silicon will run it |
+| Entitlements | `build/entitlements.mac.plist`: JIT, unsigned executable memory, library validation off, microphone |
 
-### 릴리스
+### Releasing
 
-`v*` 태그를 푸시하면 GitHub Actions(`.github/workflows/release.yml`)가 macOS에서 빌드해 GitHub Release 초안에 올립니다.
+Push a `v*` tag and `.github/workflows/release.yml` builds on `macos-14`, runs the tests, and uploads the `.dmg` and `.zip` to a draft GitHub Release.
 
-```bash
-npm version patch          # 0.1.0 → 0.1.1, 태그 v0.1.1 생성
+```sh
+npm version patch        # 0.1.0 -> 0.1.1, commits and tags v0.1.1
 git push --follow-tags
 ```
 
-정식 서명과 공증을 하려면 저장소 Secrets에 다음을 넣습니다.
+For a signed and notarized build, add these repository secrets:
 
-| Secret | 값 |
-|---|---|
-| `CSC_LINK` | Developer ID Application 인증서(.p12)의 base64 |
-| `CSC_KEY_PASSWORD` | 인증서 비밀번호 |
-| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | 공증용 Apple 계정 |
+| Secret | Value |
+| --- | --- |
+| `CSC_LINK` | Developer ID Application certificate (`.p12`), base64 |
+| `CSC_KEY_PASSWORD` | Its password |
+| `APPLE_ID` | Apple ID used for notarization |
+| `APPLE_APP_SPECIFIC_PASSWORD` | An app-specific password for it |
+| `APPLE_TEAM_ID` | Your team ID |
 
-### 아이콘 다시 만들기
+### Remaking the icon
 
-```bash
+```sh
 cd build && mkdir icon.iconset
 for s in 16 32 128 256 512; do
   rsvg-convert -w $s -h $s icon.svg -o icon.iconset/icon_${s}x${s}.png
@@ -157,22 +296,49 @@ iconutil -c icns icon.iconset -o icon.icns && rm -r icon.iconset
 rsvg-convert -w 1024 -h 1024 icon.svg -o icon.png
 ```
 
-## 한계
+`icon.svg` clips `source.png` to the macOS rounded square; replace `source.png` to change the art.
 
-- macOS Apple Silicon만 지원합니다.
-- 사용자는 한 명입니다. 로그인, 팀, 관리자 기능은 없습니다.
-- Bot은 내 Mac에서 직접 실행됩니다. Bot별 VM·컨테이너 격리와 Bot 전용 브라우저는 아직 없습니다.
-- 이메일·모바일 연동, 결제 기능은 없습니다.
+## Development
 
-## 로드맵
+```sh
+npm start                                     # run from source
+npx electron . --remote-debugging-port=9333  # with DevTools over CDP
+npm test
+```
 
-- [ ] Bot별 격리 실행 환경 (로컬 VM·컨테이너, 이후 클라우드)
-- [ ] Bot 전용 브라우저와 사람이 대신 조작하기
-- [ ] 주문·결제 API 차단 규칙
-- [ ] 실제 업무 기준 평가 세트
+Main-process changes need a restart; renderer changes need a restart too, since ES modules are cached across `location.reload()`.
 
-## 참고
+## Limitations
 
-- UI와 사용 흐름은 [Grok Bot](https://grok.com) 데스크톱 앱을 참고했습니다. CharacterBot은 xAI, Anthropic, OpenAI와 관계없는 개인 프로젝트입니다.
-- 루틴 제한(최소 15분 간격, 최대 20개, 10회 연속 실패 시 중지)과 게이트웨이 개념은 [CopilotKit OpenBot](https://github.com/CopilotKit/OpenBot)을 참고했습니다.
-- 앱 연결 화면의 서비스 로고는 각 서비스가 공개한 아이콘이며, 해당 서비스를 식별하는 용도로만 씁니다.
+- macOS on Apple Silicon only.
+- One person. No sign-in, teams or admin pages.
+- Bots run directly on your Mac in their own folder, not in a VM or container, and have no browser of their own.
+- No email, mobile app or payments.
+- Voice recognition is set to Korean (`ko-KR`).
+
+## Roadmap
+
+- [ ] An isolated computer per Bot: a local VM or container first, then the cloud
+- [ ] A browser per Bot, with taking the wheel at a login or 2FA wall
+- [ ] Gateway rules that block orders and payments on outside APIs
+- [ ] An evaluation set built from real tasks
+- [ ] Intel Macs and other platforms
+
+## Acknowledgements
+
+- The interface and flows follow the [Grok Bot](https://grok.com) desktop app. CharacterBot is an independent project, not affiliated with or endorsed by xAI, Anthropic or OpenAI.
+- The gateway and routine limits borrow from [CopilotKit OpenBot](https://github.com/CopilotKit/OpenBot).
+- Logos in the app catalog belong to their services and are used only to identify them.
+
+## Contributing
+
+- Open an issue before starting substantial work.
+- Keep changes focused, and update this README when setup, behavior or security changes.
+- Keep secrets, tokens and conversation data out of the repository.
+- Run `npm test` before opening a pull request.
+
+## License
+
+[Apache License 2.0](./LICENSE) © 2026 SUNGMYEONGGI
+
+The Claude Agent SDK, the Codex SDK and other dependencies are distributed under their own licenses and terms.

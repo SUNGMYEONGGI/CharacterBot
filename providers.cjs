@@ -14,7 +14,7 @@ const KINDS = {
 // The SDK ships its own Claude Code binary; fall back to one on PATH.
 function claudeBin() {
   try {
-    return require.resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude`);
+    return require.resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude`).replace('app.asar', 'app.asar.unpacked');
   } catch {
     return 'claude';
   }
