@@ -88,7 +88,7 @@ async function runTurn(opts: TurnOptions): Promise<void> {
       includePartialMessages: true,
       // Keep the user's own ~/.claude hooks, CLAUDE.md and plugins out of the bots.
       settingSources: [],
-      mcpServers: { ...opts.mcpServers, grokbot: opts.appServer(agentSdk) },
+      mcpServers: { ...opts.mcpServers, characterbot: opts.appServer(agentSdk) },
       disallowedTools: ['AskUserQuestion', 'EnterPlanMode', 'ExitPlanMode'],
       hooks: { PreToolUse: [{ hooks: [preToolUse], timeout: 3600 }] },
       // Everything is decided by the hook; anything that still falls through is refused.

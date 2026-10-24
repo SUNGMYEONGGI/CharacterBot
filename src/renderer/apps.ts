@@ -109,7 +109,7 @@ export function renderApps(state: Broadcast): void {
 const statusOf = (server: McpServer) => S.mcpStatus[server.id]?.status;
 const needsLogin = (server: McpServer) => statusOf(server) === 'auth';
 
-// Grok Bot's flow: add, try without a token, open the browser only if the app asks.
+// Add, try without a token, open the browser only if the app asks.
 async function connect(serverId: string, item?: CatalogItem) {
   toast('연결하는 중…');
   const res = await act('connectApp', serverId);
@@ -150,8 +150,8 @@ function secretPage(item: CatalogItem & { secret: string }): [Child, Child] {
   ]];
 }
 
-// Google's MCP servers only accept pre-registered OAuth clients. Grok Bot ships
-// its own; here the user brings one, once, and every Google app reuses it.
+// Google's MCP servers only accept pre-registered OAuth clients, so the user
+// brings one, once, and every Google app reuses it.
 function googlePage(item: Partial<CatalogItem>): [Child, Child] {
   const id = h('input', { class: 'field', placeholder: '클라이언트 ID (….apps.googleusercontent.com)' });
   const secret = h('input', { class: 'field', type: 'password', placeholder: '클라이언트 보안 비밀번호' });

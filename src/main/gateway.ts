@@ -22,7 +22,7 @@ export interface Decision {
 const APP_READ = /(^|[_-])(list|get|search|read|fetch|query|find|view|describe|lookup|check|status|whoami|me|info|retrieve|download|resolve|suggest)([_-]|$)/i;
 function defaultEffect(call: Call, overrides: Record<string, Effect>): Effect {
   if (overrides[call.name]) return overrides[call.name];
-  if (call.name.startsWith('mcp__') && !call.name.startsWith('mcp__grokbot__')) {
+  if (call.name.startsWith('mcp__') && !call.name.startsWith('mcp__characterbot__')) {
     return APP_READ.test(call.name.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, '')) ? 'allow' : 'ask';
   }
   return 'allow';
@@ -32,7 +32,7 @@ function defaultEffect(call: Call, overrides: Record<string, Effect>): Effect {
 // remote (URL/OAuth) servers. remote: tool-name slugs of remote servers.
 function accountWrite(name: string, remote: string[] = []): boolean {
   const m = name.match(/^mcp__(.+?)__(.+)$/);
-  if (!m || m[1] === 'grokbot' || APP_READ.test(m[2])) return false;
+  if (!m || m[1] === 'characterbot' || APP_READ.test(m[2])) return false;
   return m[1].startsWith('claude_ai_') || remote.includes(m[1]);
 }
 
@@ -64,7 +64,7 @@ function decide(call: Call, rules: Rule[] = [], overrides: Record<string, Effect
 }
 
 // Combines the effects of natural-language rules that matched; on conflict
-// "ask first" wins, as in Grok Bot's auto-review.
+// "ask first" wins.
 function combine(effects: Effect[]): Effect | null {
   if (!effects.length) return null;
   return new Set(effects).size > 1 ? 'ask' : effects[0];

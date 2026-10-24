@@ -57,14 +57,14 @@ async function login() {
 
 const logout = () => run(['logout'], 20_000);
 
-// Makes one Grok Bot style icon. source: optional local image path to reinterpret;
+// Makes one profile icon in the app's style. source: optional local image path to reinterpret;
 // note: optional extra request. Resolves with the generated PNG's path.
 async function generate({ source, note }: { source: string | null; note?: string }, cwd: string, home: string): Promise<string> {
   const { Codex } = await import('@openai/codex-sdk');
   const codex = new Codex({ codexPathOverride: codexBin(), env: { ...process.env, CODEX_HOME: botHome(home) }, config: { developer_instructions: BOT_ICON_PROMPT } });
   const thread = codex.startThread({ workingDirectory: cwd, skipGitRepoCheck: true, sandboxMode: 'read-only', approvalPolicy: 'never' });
   const ask = [
-    source ? '첨부한 이미지 속 대상을 Grok bot icon으로 변환해 주세요.' : '아래 설명의 캐릭터를 Grok bot icon으로 만들어 주세요.',
+    source ? '첨부한 이미지 속 대상을 CharacterBot 아이콘으로 바꿔 주세요.' : '아래 설명의 캐릭터를 CharacterBot 아이콘으로 만들어 주세요.',
     note ? `추가 요청: ${note}` : '',
     '내장 image_gen 도구를 바로 한 번 호출해 아이콘 한 장만 생성하세요. 파일을 읽거나 명령을 실행하지 마세요.',
   ].filter(Boolean).join('\n');
@@ -129,7 +129,7 @@ function botHome(home: string): string {
 
 // One bot turn on a ChatGPT model. on(event) receives every Codex thread event.
 // Resolves with the Codex thread id to resume next time.
-// appTools: { url, token } of the Grok Bot tools' MCP endpoint (optional).
+// appTools: { url, token } of the app tools' MCP endpoint (optional).
 export interface CodexTurn {
   home: string;
   threadId: string | null;
@@ -149,11 +149,11 @@ async function runTurn({ home, threadId, prompt, images, cwd, model, instruction
   const { Codex } = await import('@openai/codex-sdk');
   const config: NonNullable<CodexOptions['config']> = { developer_instructions: instructions };
   if (appTools) {
-    config.mcp_servers = { grokbot: { url: appTools.url, bearer_token_env_var: 'GROKBOT_TOOLS_TOKEN', default_tools_approval_mode: 'approve' } };
+    config.mcp_servers = { characterbot: { url: appTools.url, bearer_token_env_var: 'CHARACTERBOT_TOOLS_TOKEN', default_tools_approval_mode: 'approve' } };
   }
   const codex = new Codex({
     codexPathOverride: codexBin(),
-    env: { ...process.env, CODEX_HOME: botHome(home), ...(appTools ? { GROKBOT_TOOLS_TOKEN: appTools.token } : {}) },
+    env: { ...process.env, CODEX_HOME: botHome(home), ...(appTools ? { CHARACTERBOT_TOOLS_TOKEN: appTools.token } : {}) },
     config,
   });
   const opts: ThreadOptions = {
@@ -204,7 +204,7 @@ function usage(home: string): Promise<ChatgptUsage> {
       }
     });
     const send = (m: Record<string, unknown>) => child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', ...m })}\n`);
-    send({ id: 1, method: 'initialize', params: { clientInfo: { name: 'grokbot', version: '0.1.0' } } });
+    send({ id: 1, method: 'initialize', params: { clientInfo: { name: 'characterbot', version: '0.1.0' } } });
     send({ method: 'initialized' });
     send({ id: 2, method: 'account/rateLimits/read' });
   });

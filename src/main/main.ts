@@ -39,10 +39,6 @@ interface SecretStore {
 type Tag = { threadOf?: string; viaBotId?: string };
 type ApprovalDone = (decision: 'allow' | 'deny' | 'always', args?: Record<string, unknown>) => void;
 
-// Installs from when the app was called Grok Bot Clone keep their data folder.
-const oldData = path.join(app.getPath('appData'), 'Grok Bot Clone');
-if (!fs.existsSync(path.join(app.getPath('userData'), 'state.json')) && fs.existsSync(path.join(oldData, 'state.json'))) app.setPath('userData', oldData);
-
 // Takes effect on the next launch (settings › 일반 › 시스템).
 if (store.load(path.join(app.getPath('userData'), 'state.json')).settings.hardwareAcceleration === false) app.disableHardwareAcceleration();
 
@@ -273,11 +269,11 @@ function systemPrompt(bot: Bot, conv: Conv): string {
     const folders = conv.botIds.map(findBot).filter(isBot).filter((b) => b.id !== bot.id).map((b) => `- ${b.name}: ${workspace(b.id)}`);
     if (folders.length) parts.push(`다른 멤버의 작업 폴더(읽기 가능, 파일을 주고받을 때 경로를 알려 주세요):\n${folders.join('\n')}`);
   }
-  parts.push('현재 작업 폴더가 당신의 컴퓨터입니다. 만든 파일은 이 폴더에 저장하면 사용자의 라이브러리에 표시됩니다. 사용자에게 결정을 물을 때는 mcp__grokbot__ask_user를, 오래 기억할 사실은 mcp__grokbot__remember를, 반복 작업 요청은 mcp__grokbot__schedule_routine을 쓰세요. 다른 Bot에게 일을 맡기거나 물어볼 때는 mcp__grokbot__message_bot을, 사용자가 요청하지 않은 회의 초대를 발견하면 mcp__grokbot__request_meeting_approval을 쓰세요.');
+  parts.push('현재 작업 폴더가 당신의 컴퓨터입니다. 만든 파일은 이 폴더에 저장하면 사용자의 라이브러리에 표시됩니다. 사용자에게 결정을 물을 때는 mcp__characterbot__ask_user를, 오래 기억할 사실은 mcp__characterbot__remember를, 반복 작업 요청은 mcp__characterbot__schedule_routine을 쓰세요. 다른 Bot에게 일을 맡기거나 물어볼 때는 mcp__characterbot__message_bot을, 사용자가 요청하지 않은 회의 초대를 발견하면 mcp__characterbot__request_meeting_approval을 쓰세요.');
   const team = state.bots.filter((b) => b.id !== bot.id);
   if (bot.id === mainBot()?.id && team.length) {
     const role = (b: Bot) => (b.label || b.systemPrompt.split('\n')[0]).slice(0, 160);
-    parts.push(`당신은 사용자의 메인 Bot입니다. 사용자가 가장 먼저 찾는 창구로서, 다른 Bot의 전문 분야에 맞는 일은 mcp__grokbot__message_bot으로 맡기고 받은 결과를 모아 정리해 보고하세요. 서로 의존하지 않는 일은 여러 Bot에게 한 번에(동시에) 맡겨도 됩니다. 간단한 일은 직접 처리하세요.\n팀 Bot:\n${team.map((b) => `- ${b.name}: ${role(b)}`).join('\n')}`);
+    parts.push(`당신은 사용자의 메인 Bot입니다. 사용자가 가장 먼저 찾는 창구로서, 다른 Bot의 전문 분야에 맞는 일은 mcp__characterbot__message_bot으로 맡기고 받은 결과를 모아 정리해 보고하세요. 서로 의존하지 않는 일은 여러 Bot에게 한 번에(동시에) 맡겨도 됩니다. 간단한 일은 직접 처리하세요.\n팀 Bot:\n${team.map((b) => `- ${b.name}: ${role(b)}`).join('\n')}`);
   }
   if (state.settings.blockAccountWrites !== false) parts.push('사용자 계정과 연동된 앱(Slack, Gmail, 캘린더, Notion 등)은 읽기만 하세요. 메시지·메일 발송, 일정 생성·응답, 페이지 작성 같은 쓰기는 막혀 있으니 시도하지 말고, 보낼 내용은 채팅에 초안으로 보여주세요.');
   parts.push('답에서 다이어그램은 ```mermaid 코드 블록으로, 수식은 $...$ / $$...$$ (KaTeX)로 쓰면 채팅에 그려집니다. D3·Three.js 같은 인터랙티브 시각화는 단일 HTML 파일로 작업 폴더에 저장하면 라이브러리에서 바로 열립니다.');
@@ -326,7 +322,7 @@ function finishTool(conv: Conv, bot: Bot, toolMsg: Message, output: string, isEr
   const args = (toolMsg.args || {}) as Record<string, string>;
   toolMsg.content = gateway.maskSecrets(output, secretValues);
   if (isError && toolMsg.effect !== 'deny' && !toolMsg.content.startsWith('Error:')) toolMsg.content = `Error: ${toolMsg.content}`;
-  const short = name.replace(/^mcp__grokbot__/, '');
+  const short = name.replace(/^mcp__characterbot__/, '');
   if (!isError && short === 'ask_user') toolMsg.card = { type: 'question', question: args.question, options: (toolMsg.args?.options as string[]) || [] };
   if (!isError && short === 'request_meeting_approval') toolMsg.card = { ...args, type: 'meeting', title: args.title };
   if (!isError && short === 'propose_skill') toolMsg.card = { type: 'skill', name: args.name, description: args.description, body: args.body };
@@ -353,7 +349,7 @@ async function review(call: Call, secrets: SecretStore): Promise<{ effect: Effec
   }
   if (!s.autoReview) return { effect: 'allow' };
   const base = gateway.decide(call, state.rules, { Bash: s.computerAccess });
-  if (base.rule || call.name.startsWith('mcp__grokbot__') || !s.reviewRules.length) return base;
+  if (base.rule || call.name.startsWith('mcp__characterbot__') || !s.reviewRules.length) return base;
   const key = JSON.stringify([s.reviewRules, call.name, call.args]);
   try {
     if (!judgeCache.has(key)) judgeCache.set(key, await agent.judgeRules({ rules: s.reviewRules, call, env: agentEnv(secrets) }));
@@ -443,7 +439,7 @@ async function botTurn(conv: Conv, bot: Bot, initiator: Initiator, signal: Abort
     const decision = await review({ ...call, botId: bot.id, initiator }, secrets);
     let effect = decision.effect;
     let updatedInput: Record<string, unknown> | undefined;
-    const external = call.name.startsWith('mcp__') && !call.name.startsWith('mcp__grokbot__');
+    const external = call.name.startsWith('mcp__') && !call.name.startsWith('mcp__characterbot__');
     const granted = grants.get(bot.id) || 0;
     if (effect === 'ask' && external && /calendar|event/i.test(call.name) && granted) {
       grants.set(bot.id, granted - 1);
@@ -601,12 +597,12 @@ async function botTurn(conv: Conv, bot: Bot, initiator: Initiator, signal: Abort
       broadcast();
     };
     const sandbox = ({ allow: 'danger-full-access', ask: 'workspace-write', deny: 'read-only' } as const satisfies Record<Effect, SandboxMode>)[state.settings.computerAccess] || 'workspace-write';
-    // Only the Grok Bot tools (mcp__grokbot__*) come along; no account-linked apps.
+    // Only the app tools (mcp__characterbot__*) come along; no account-linked apps.
     const appTools = await tools.openHttpTurn(toolCtx);
     try {
       session.id = await imagegen.runTurn({
         home: codexHome(), threadId: session.id, prompt: text, images: files, cwd: ws, model: model.slice('openai:'.length),
-        instructions: `${systemPrompt(bot, conv)}\n\n(이 실행 환경에서는 grokbot MCP 서버의 도구(ask_user, remember, message_bot 등)만 쓸 수 있고, 사용자 계정과 연동된 앱은 없습니다.)`,
+        instructions: `${systemPrompt(bot, conv)}\n\n(이 실행 환경에서는 characterbot MCP 서버의 도구(ask_user, remember, message_bot 등)만 쓸 수 있고, 사용자 계정과 연동된 앱은 없습니다.)`,
         sandbox, additionalDirectories: conv.kind === 'group' ? conv.botIds.filter((id) => id !== bot.id && findBot(id)).map((id) => workspace(id)) : [],
         appTools, signal, on,
       });
@@ -699,7 +695,7 @@ function threadBots(conv: Conv, rootId: string): string[] {
   return ids.length ? [...new Set(ids)] : conv.botIds;
 }
 
-// A bot DMs another bot (mcp__grokbot__message_bot): the message lands in the
+// A bot DMs another bot (mcp__characterbot__message_bot): the message lands in the
 // target's chat, the target answers there, and the answer goes back as the tool
 // result. One hop only, so two bots can't keep each other busy.
 async function messageBot(from: Bot, name: string, text: string, initiator: Initiator, fromConv: Conv): Promise<string> {
@@ -1084,11 +1080,11 @@ const actions = {
     state.settings.chatgpt = false;
     openaiModels = [];
   },
-  // Grok Bot style profile icon on ChatGPT. source: data URL of the image to
+  // Profile icon in the app's style, made on ChatGPT. source: data URL of the image to
   // reinterpret (optional); resolves with a 256px PNG data URL.
   async generateIcon({ source, note }: { source?: string; note?: string }): Promise<string> {
     if (!chatgptStatus?.loggedIn) throw new Error('설정 › 모델에서 ChatGPT를 먼저 연결하세요');
-    const dir = path.join(dataDir(), 'icon-studio');
+    const dir = path.join(dataDir(), 'icons');
     fs.mkdirSync(dir, { recursive: true });
     let file: string | null = null;
     if (source) {
@@ -1100,7 +1096,7 @@ const actions = {
     const out = await imagegen.generate({ source: file, note }, dir, codexHome());
     return nativeImage.createFromPath(out).resize({ width: 256, height: 256, quality: 'best' }).toDataURL();
   },
-  // ----- connecting apps (as in Grok Bot) -----
+  // ----- connecting apps -----
   // Remote servers are tried without a token first; only a 401 (or a host that
   // always needs sign-in, like Google) starts the browser OAuth flow.
   async connectApp(id: string): Promise<{ connected?: boolean; needsClient?: string }> {
@@ -1289,17 +1285,17 @@ const actions = {
   },
   async exportBot(id: string) {
     const bot = getBot(id);
-    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow(), { defaultPath: `${bot.name}.grokbot.json` });
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow(), { defaultPath: `${bot.name}.characterbot.json` });
     if (canceled || !filePath) return;
     const skills = state.skills.filter((s) => bot.skillIds.includes(s.id)).map(({ name, description, body }) => ({ name, description, body }));
     const { name, label, color, systemPrompt: prompt, model } = bot;
-    fs.writeFileSync(filePath, JSON.stringify({ grokbotTemplate: 1, name, label, color, systemPrompt: prompt, model, skills }, null, 2));
+    fs.writeFileSync(filePath, JSON.stringify({ characterbotTemplate: 1, name, label, color, systemPrompt: prompt, model, skills }, null, 2));
   },
   async importBot(): Promise<string | null> {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow(), { filters: [{ name: 'Bot 템플릿', extensions: ['json'] }] });
     if (canceled) return null;
     const tpl = JSON.parse(fs.readFileSync(filePaths[0], 'utf8'));
-    if (tpl.grokbotTemplate !== 1) throw new Error('Bot 템플릿 파일이 아닙니다');
+    if (tpl.characterbotTemplate !== 1) throw new Error('Bot 템플릿 파일이 아닙니다');
     const convId = actions.createBot(tpl.name);
     const bot = getBot(findConv(convId).botIds[0]);
     Object.assign(bot, { label: tpl.label || '', color: tpl.color || bot.color, systemPrompt: tpl.systemPrompt, model: tpl.model || '' });

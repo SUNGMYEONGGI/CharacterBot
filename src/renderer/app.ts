@@ -35,10 +35,10 @@ const conv = () => S.convs.find((c) => c.id === ui.convId);
 const currentConv = () => conv() as Conv;
 const isRunning = (id: string | null | undefined) => Boolean(id && S.runtime.running.includes(id));
 const convTitle = (c: Conv) => (c.kind === 'dm' ? botById(c.botIds[0])?.name || 'Bot' : c.name);
-const shortTool = (name: string) => name.replace(/^mcp__grokbot__/, '').replace(/^mcp__([^_]+)__/, '$1 · ');
+const shortTool = (name: string) => name.replace(/^mcp__characterbot__/, '').replace(/^mcp__([^_]+)__/, '$1 · ');
 
 const isMain = (id: string | undefined) => id === (S.settings.mainBotId && botById(S.settings.mainBotId) ? S.settings.mainBotId : S.bots[0]?.id);
-// A ★ on the main bot's avatar, as in Grok Bot's sidebar.
+// A ★ on the main bot's avatar.
 const withStar = (el: HTMLElement, botId: string, size: number) => (isMain(botId) ? h('span', { class: 'main-star-wrap', style: `width:${size}px;height:${size}px` }, el, h('span', { class: 'main-star', title: '메인 Bot' }, '★')) : el);
 
 function convAvatar(c: Conv, size: number): HTMLElement {
@@ -83,8 +83,7 @@ function renderSidebar() {
   renderConvList();
 }
 
-// Same items as Grok Bot's account menu, minus what this app doesn't have
-// (mobile app). Plan row: Claude plan and its weekly use.
+// Account menu. Plan row: Claude plan and its weekly use.
 function openUserMenu(anchor: Element): void {
   const u = planUsage();
   const pct = u?.available && u.sevenDay ? `${Math.round(u.sevenDay.utilization ?? 0)}% 사용` : '';
@@ -103,7 +102,7 @@ function openUserMenu(anchor: Element): void {
   ], { place: 'above' });
 }
 
-// While a bot works, its chat shows three pulsing dots in the bot's color (as in Grok Bot).
+// While a bot works, its chat shows three pulsing dots in the bot's color.
 const typingDots = (bot: Bot | undefined, size: number) => h('span', { class: 'typing-dots', style: `width:${size}px;height:${size}px;--dot:${bot?.color || '#999'};--t0:-${Date.now() % 1200}ms` }, h('i'), h('i'), h('i'));
 
 function renderConvList() {
@@ -152,7 +151,7 @@ function convRow(c: Conv): HTMLElement {
   );
 }
 
-// Right-click menu on a sidebar chat (Grok Bot's, minus sections and ID copy).
+// Right-click menu on a sidebar chat.
 function convMenu(anchor: Element, c: Conv): void {
   const bot = c.kind === 'dm' ? botById(c.botIds[0]) : null;
   const rename = () => askName(bot ? 'Bot 이름 변경' : '그룹 이름 변경', bot ? bot.name : convTitle(c), (v) => act(bot ? 'updateBot' : 'updateConv', bot ? bot.id : c.id, { name: v }));
@@ -188,7 +187,7 @@ function stepLabel(m: Message): string {
 
 function questionCard(c: Conv, m: Message & { card: QuestionCard }): HTMLElement {
   const { question, options, answer } = m.card;
-  // Once answered, only the chosen option stays, its key in the bot's color (as in Grok Bot).
+  // Once answered, only the chosen option stays, its key in the bot's color.
   return h('div', { class: 'card question', style: `--bot:${botById(m.botId)?.color || 'var(--base)'}` }, h('div', { class: 'q' }, question),
     options.map((opt, i) => (answer && answer !== opt ? null : h('button', {
       class: `option${answer === opt ? ' chosen' : ''}`,
@@ -206,8 +205,7 @@ function skillCard(c: Conv, m: Message & { card: SkillCard }): HTMLElement {
     h('div', { class: 'btns' }, saved ? h('span', { class: 'added' }, icon('check', 14), '저장됨') : h('button', { class: 'btn primary', onclick: () => act('acceptSkill', c.id, m.id) }, '스킬 저장')));
 }
 
-// Approvals. Writes to an external app arrive as an editable draft (as in Grok
-// Bot); anything else is a plain allow/deny question. Cards are cached so edits
+// Approvals. Writes to an external app arrive as an editable draft; anything else is a plain allow/deny question. Cards are cached so edits
 // survive re-renders.
 const approvalEls = new Map<string, HTMLElement>(); // approval id -> card
 const appOf = (tool: string) => tool.match(/^mcp__(.+?)__(.+)$/);
@@ -219,7 +217,7 @@ function approvalCard(p: Approval): HTMLElement {
   const bot = botById(p.botId);
   const parts = appOf(p.tool);
   let card: HTMLElement;
-  if (!parts || parts[1] === 'grokbot') {
+  if (!parts || parts[1] === 'characterbot') {
     card = h('div', { class: 'card' },
       h('h4', {}, `${bot?.name}이(가) 이 작업을 하도록 허용할까요?`),
       h('div', { class: 'muted small', style: 'margin:-4px 2px 10px' }, shortTool(p.tool)),
@@ -283,7 +281,7 @@ function meetingCard(c: Conv, m: Message & { card: MeetingCard }): HTMLElement {
       h('button', { class: 'btn ghost', onclick: () => choose('later') }, '나중에')]));
 }
 
-// "Slack(으)로 보냄 — “…”" under an approved draft, as in Grok Bot.
+// "Slack(으)로 보냄 — “…”" under an approved draft.
 function sentLine(m: Message): HTMLElement {
   const parts = appOf(m.name || '') || ['', '', ''];
   const a = (m.args || {}) as Record<string, unknown>;
@@ -363,7 +361,7 @@ function emojiPicker(anchor: Element, pick: (emoji: string) => void): void {
 }
 
 // Messages another bot sent to this chat (and the replies) fold into one
-// "메시지 N개 · [avatar] name" row, as in Grok Bot.
+// "메시지 N개 · [avatar] name" row.
 function bundleItem(c: Conv, run: Message[]): HTMLElement {
   const from = botById(run[0].viaBotId);
   const n = run.filter((m) => (m.role === 'user' || m.role === 'assistant') && (m.content || m.error)).length;
@@ -392,7 +390,7 @@ function messageItems(c: Conv, list: Message[], opts: { inThread?: boolean } = {
       lastSender = null;
       continue;
     }
-    // Tool calls stay out of the thread, as in Grok Bot (컴퓨터 tab shows them); only cards appear.
+    // Tool calls stay out of the thread (컴퓨터 tab shows them); only cards appear.
     if (m.role === 'tool') {
       const item = toolItem(c, m);
       if (item) items.push(item);
@@ -558,7 +556,7 @@ function renderComposerState() {
 }
 
 // "/" at the start suggests skills; "@" suggests everyone and members (in a group)
-// plus connected apps, as in Grok Bot. In a thread "@" offers every bot: the one
+// plus connected apps. In a thread "@" offers every bot: the one
 // named joins the thread and answers there.
 const APP_STATUS: Record<string, string> = { connected: '연결됨', auth: '인증 필요', error: '오류', connecting: '연결 중' };
 function suggestions(el: HTMLTextAreaElement = input(), thread = false): Suggestion[] {
@@ -1013,7 +1011,7 @@ function avatarPicker(state: Look, onChange?: () => void) {
 }
 
 // Profile: the round character (shape + color) or an AI icon made on ChatGPT
-// in Grok Bot Icon Studio style. Returns the dialog body and the look to save.
+// in the app's style. Returns the dialog body and the look to save.
 function profileEditor(state: Look, nameField: HTMLElement | null = null) {
   let mode = state.image ? 'ai' : 'character';
   let busy = false;
@@ -1047,7 +1045,7 @@ function profileEditor(state: Look, nameField: HTMLElement | null = null) {
     fill(body, seg, h('div', { class: 'studio' }, face, nameField,
       ready ? [drop, file, note,
         h('button', { class: 'btn soft', disabled: busy ? true : null, onclick: generate }, icon('sparkle', 15), busy ? ' 생성 중… (1분 정도)' : state.image ? ' 다시 생성' : ' 프로필 생성'),
-        h('div', { class: 'muted small' }, 'ChatGPT 구독으로 Grok Bot 아이콘 스타일 이미지를 만들어요.')]
+        h('div', { class: 'muted small' }, 'ChatGPT 구독으로 CharacterBot 스타일 프로필 아이콘을 만들어요.')]
         : [h('div', { class: 'muted small', style: 'text-align:center' }, 'AI 프로필은 ChatGPT 구독으로 만들어요.'),
           h('button', { class: 'btn soft', onclick: () => { closeModal(); openSettings('general'); } }, icon('openai', 15), ' ChatGPT 연결')]));
   };
@@ -1055,16 +1053,16 @@ function profileEditor(state: Look, nameField: HTMLElement | null = null) {
   return { body, look: () => (mode === 'ai' && state.image ? { image: state.image } : { shape: state.shape, color: state.color, image: null }) };
 }
 
-// Grok Bot's productivity templates (names and blurbs from its template gallery).
+// Assistant templates for the + menu.
 const ASSISTANT_RULES = '당신은 먼저 챙기는(proactive) 비서입니다. 사용자가 요청하지 않은 회의 초대를 발견하면 request_meeting_approval 카드로 참석 여부를 물으세요. 정기 점검 때 사용자가 알아야 할 일을 찾으면 묻기 전에 먼저 알리고, 다음 행동을 제안하세요. 연결된 앱(캘린더, 메일, Slack, Notion 등)을 직접 조회해 사실에 근거해 답하세요. 메일 발송·메시지 전송·삭제처럼 남에게 보이거나 되돌리기 어려운 일은 초안을 먼저 보여주고 승인을 받으세요. 매일 반복할 일은 schedule_routine으로 루틴을 제안하고, 사용자의 선호와 사람·프로젝트 정보는 remember로 기억하세요. 답은 짧고 훑어보기 쉽게 쓰세요.';
 const ASSISTANTS = [
-  { name: '비서실장', description: 'Slack, 이메일, 캘린더를 살펴보고 확인이 필요한 내용을 요약해요', prompt: '당신은 사용자의 비서실장입니다. Slack, 이메일, 캘린더를 살펴 사용자가 확인하거나 결정해야 할 일을 우선순위대로 정리하고, 놓친 요청과 마감을 짚어 줍니다.',
+  { name: '비서실장', description: '메일·Slack·일정에서 내가 결정할 일을 골라 순서대로 알려줘요', prompt: '당신은 사용자의 비서실장입니다. Slack, 이메일, 캘린더를 살펴 사용자가 확인하거나 결정해야 할 일을 우선순위대로 정리하고, 놓친 요청과 마감을 짚어 줍니다.',
     routines: [{ daily_time: '09:00', prompt: '오늘 확인하거나 결정해야 할 일을 Slack·메일·캘린더에서 찾아 우선순위대로 알려줘.' }, { every_minutes: 60, prompt: '지난 1시간 동안 나에게 온 요청·멘션·급한 메일이 있으면 알려줘.' }] },
-  { name: '일일 브리핑 작성자', description: '나에게 중요한 소식만 추려 간결한 일일 브리핑으로 제공해요', prompt: '당신은 일일 브리핑 작성자입니다. 오늘 일정, 중요한 메일과 메시지, 마감이 다가오는 일을 추려 아침마다 한 화면짜리 브리핑으로 정리합니다.',
+  { name: '아침 브리핑', description: '매일 아침 오늘 일정과 챙길 일을 한 화면으로 정리해요', prompt: '당신은 일일 브리핑 작성자입니다. 오늘 일정, 중요한 메일과 메시지, 마감이 다가오는 일을 추려 아침마다 한 화면짜리 브리핑으로 정리합니다.',
     routines: [{ daily_time: '08:00', prompt: '오늘의 일일 브리핑을 작성해줘.' }] },
-  { name: '임원 비서', description: '아침 브리핑을 제공하고 새 대화방에 참여하면 놓친 내용을 요약해 줘요', prompt: '당신은 사용자의 임원 비서입니다. 아침 브리핑, 회의 준비 자료, 일정 조율, 후속 조치 정리를 맡고, 대화에 늦게 합류하면 놓친 내용을 요약해 줍니다.',
+  { name: '임원 비서', description: '회의 준비와 일정 조율을 맡고, 늦게 들어온 대화는 요약해 줘요', prompt: '당신은 사용자의 임원 비서입니다. 아침 브리핑, 회의 준비 자료, 일정 조율, 후속 조치 정리를 맡고, 대화에 늦게 합류하면 놓친 내용을 요약해 줍니다.',
     routines: [{ daily_time: '08:30', prompt: '아침 브리핑을 해줘.' }, { every_minutes: 30, prompt: '1시간 안에 시작하는 회의가 있으면 준비 자료(참석자, 관련 메일·문서, 안건)를 정리해 알려줘.' }, { every_minutes: 60, prompt: '내가 아직 응답하지 않은 새 회의 초대가 있으면 request_meeting_approval로 참석 여부를 물어봐줘.' }] },
-  { name: '받은 편지함 관리자', description: '이메일을 분류하고 긴급 스레드를 표시해 승인용 답장 초안을 작성해요', prompt: '당신은 받은 편지함 관리자입니다. 새 메일을 긴급/답장 필요/참고/무시로 분류하고, 긴급 스레드를 먼저 알려 주며, 답장이 필요한 메일에는 승인용 초안을 작성합니다.',
+  { name: '메일 정리', description: '새 메일을 분류하고 답장이 필요한 메일엔 초안을 붙여 줘요', prompt: '당신은 받은 편지함 관리자입니다. 새 메일을 긴급/답장 필요/참고/무시로 분류하고, 긴급 스레드를 먼저 알려 주며, 답장이 필요한 메일에는 승인용 초안을 작성합니다.',
     routines: [{ every_minutes: 30, prompt: '새 메일을 분류하고, 긴급하거나 답장이 필요한 메일이 있으면 초안과 함께 알려줘.' }] },
 ];
 
@@ -1138,7 +1136,7 @@ function importBotsCsv() {
   file.click();
 }
 
-// Grok Bot's memory import: copy a prompt into the other assistant, paste its answer back.
+// Memory import: copy a prompt into the other assistant, paste its answer back.
 const MEMORY_EXPORT_PROMPT = '지금까지 나에 대해 기억하거나 알고 있는 사실(이름, 직업, 프로젝트, 선호, 자주 쓰는 도구, 진행 중인 일 등)을 빠짐없이 한 줄에 하나씩 "- "로 시작하는 목록으로만 출력해 줘. 설명이나 머리말은 쓰지 마.';
 function openMemoryImport(bot: Bot | undefined = botById(conv()?.botIds[0]) || S.bots[0]) {
   const pick = h('select', { class: 'select' }, S.bots.map((b) => h('option', { value: b.id, selected: b.id === bot?.id ? true : null }, b.name)));
@@ -1333,7 +1331,7 @@ buildComposer();
 window.desktop.init();
 refreshUsage();
 
-// ---------- command palette and shortcuts (same keys as Grok Bot) ----------
+// ---------- command palette and shortcuts (⌘K palette and the shortcuts) ----------
 
 const SHORTCUTS: [string, string, () => void][] = [
   ['⌘K', '이동 및 명령', () => openPalette()],

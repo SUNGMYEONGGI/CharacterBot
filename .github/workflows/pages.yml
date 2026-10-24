@@ -9,6 +9,7 @@ on:
       - 'site/**'
       - 'scripts/build-site.mjs'
       - 'src/renderer/ui.ts'
+      - 'src/renderer/logos/**'
       - 'build/icon.png'
       - '.github/workflows/pages.yml'
   workflow_dispatch:

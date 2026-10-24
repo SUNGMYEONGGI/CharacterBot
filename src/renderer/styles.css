@@ -379,7 +379,7 @@ a.btn { color: var(--base); text-decoration: none; }
 .group + .group { margin-top: 12px; }
 .picker-btn { text-align: left; min-width: 190px; }
 
-/* ---------- animated avatars (states as in Grok Bot) ---------- */
+/* ---------- animated avatars (idle, thinking, streaming, working, blocked, finished) ---------- */
 .avatar svg .av-body, .avatar svg .av-look, .avatar svg .eye { transform-box: view-box; transform-origin: 50px 55px; }
 .avatar svg .av-look { transition: transform .25s ease-out; }
 .avatar svg .eye { transform-box: fill-box; transform-origin: center; animation: av-blink 5.2s infinite; animation-delay: var(--t0, 0s); }

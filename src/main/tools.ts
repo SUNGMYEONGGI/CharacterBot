@@ -1,5 +1,5 @@
 // App-specific tools exposed to the Claude agent through an in-process MCP
-// server (`mcp__grokbot__*`). File, shell and web tools come from the SDK.
+// server (`mcp__characterbot__*`). File, shell and web tools come from the SDK.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -115,7 +115,7 @@ function specs(ctx: ToolCtx): Spec[] {
 // The in-process server for Claude turns.
 function buildServer(agentSdk: AgentSdk, ctx: ToolCtx): McpSdkServerConfigWithInstance {
   return agentSdk.createSdkMcpServer({
-    name: 'grokbot',
+    name: 'characterbot',
     tools: specs(ctx).map((s) => agentSdk.tool(s.name, s.description, s.shape, s.handler)),
   });
 }
@@ -130,7 +130,7 @@ function httpEndpoint(): Promise<string> {
     const srv = http.createServer(async (req, res) => {
       const ctx = turns.get((req.headers.authorization || '').replace(/^Bearer /, ''));
       if (!ctx) return void res.writeHead(401).end();
-      const server = new McpServer({ name: 'grokbot', version: '1.0.0' });
+      const server = new McpServer({ name: 'characterbot', version: '1.0.0' });
       for (const s of specs(ctx)) server.registerTool(s.name, { description: s.description, inputSchema: s.shape }, s.handler);
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined }); // stateless
       res.on('close', () => { transport.close(); server.close(); });

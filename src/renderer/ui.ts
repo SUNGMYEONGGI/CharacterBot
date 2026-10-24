@@ -191,7 +191,7 @@ const LEGACY_SHAPES: Record<string, number> = { hex: 8, square: 1 };
 export const shapeOf = (bot: Partial<Bot> | null | undefined): number => (typeof bot?.shape === 'number' ? bot.shape : LEGACY_SHAPES[String(bot?.shape)] ?? 0);
 
 // What a bot is doing right now (idle, thinking, streaming, working, blocked,
-// finished), as in Grok Bot's animated avatars. The app installs the resolver.
+// finished). The app installs the resolver.
 let stateOf: (botId: string) => string = () => 'idle';
 export const setAvatarState = (fn: (botId: string) => string): void => { stateOf = fn; };
 

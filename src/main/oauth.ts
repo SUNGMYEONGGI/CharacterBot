@@ -19,7 +19,7 @@ export type OauthClient = { client_id: string; client_secret?: string } | null;
 const PORT = 53682;
 const REDIRECT_URI = `http://localhost:${PORT}/oauth/callback`;
 
-// Per-host sign-in rules, as in Grok Bot. Hosts not listed register a client on
+// Per-host sign-in rules. Hosts not listed register a client on
 // the fly (dynamic registration) and are only signed in when they answer 401.
 // static: only pre-registered clients are accepted; `provider` names whose client.
 // always: sign in even though the server lists tools without a token.

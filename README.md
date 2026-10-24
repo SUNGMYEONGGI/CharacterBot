@@ -27,7 +27,7 @@ Claude Bots run on the Claude Agent SDK with your Claude login. ChatGPT Bots and
 
 ## What it is
 
-A desktop chat app in which every contact is an agent. A fresh install starts with one Bot, **Grok**, which is also the **main Bot** (★): the first one you talk to, and the one that hands work to the others. Add more from `⌘N`, from a template, or from a CSV file.
+A desktop chat app in which every contact is an agent. A fresh install starts with one Bot, **Octo**, which is also the **main Bot** (★): the first one you talk to, and the one that hands work to the others. Add more from `⌘N`, from a template, or from a CSV file.
 
 Each Bot is configuration, not code:
 
@@ -85,7 +85,7 @@ The app picks up your Claude Code login on first launch. If it does not, open �
 
 ## Try it
 
-- Say hello to **Grok**, then ask it to create two Bots with different roles (or press `⌘N`).
+- Say hello to **Octo**, then ask it to create two Bots with different roles (or press `⌘N`).
 - Ask the main Bot something that needs both of them. Watch the activity row ("A, B 작업 중…") and open the background tasks panel.
 - Reply in a thread and write `@<Bot name>` to bring another Bot in; tell them to discuss and come back with one answer.
 - Ask a Bot to `remember` something about you, then open its settings and edit the memory.
@@ -144,7 +144,7 @@ The app picks up your Claude Code login on first launch. If it does not, open �
 - **Skills**: instructions a Bot loads by name with `use_skill`. A Bot can propose one with `propose_skill`, and it is saved only when you press the button on the card.
 - **Apps over MCP**: remote (URL, OAuth) and local (stdio) MCP servers, a catalog of 51, `mcp.json` import, and per-Bot grants. Google apps take a Google OAuth client you register once.
 - **Notifications**: a system notification and a Dock badge for every approval or question waiting on you.
-- **Import and export**: Bots export to `<name>.grokbot.json` templates and import back; Bots import in bulk from CSV (up to 50).
+- **Import and export**: Bots export to `<name>.characterbot.json` templates and import back; Bots import in bulk from CSV (up to 50).
 
 ## Bot tools
 
@@ -187,10 +187,8 @@ Everything is set in the app; there is no `.env`. What is stored where:
 | `secrets.bin` | Tokens and keys, encrypted with `safeStorage`. |
 | `workspaces/<botId>/` | Each Bot's folder, its working directory. |
 | `codex/` | The app-private `CODEX_HOME` for ChatGPT Bots. |
-| `icon-studio/`, `codex-inbox/` | Generated images and their inputs. |
+| `icons/`, `codex-inbox/` | Generated images and their inputs. |
 | `bin/stt` | The compiled speech recognition helper. |
-
-Installs from before the rename keep using `~/Library/Application Support/Grok Bot Clone` when it holds the data.
 
 Settings worth knowing:
 
@@ -351,7 +349,7 @@ Every change needs `npm run build` (which `npm start` runs) and a restart. Pull 
 
 ## Acknowledgements
 
-- The interface and flows follow the [Grok Bot](https://grok.com) desktop app. CharacterBot is an independent project, not affiliated with or endorsed by xAI, Anthropic or OpenAI.
+- CharacterBot is an independent project, not affiliated with or endorsed by Anthropic or OpenAI.
 - The gateway and routine limits borrow from [CopilotKit OpenBot](https://github.com/CopilotKit/OpenBot).
 - Logos in the app catalog belong to their services and are used only to identify them.
 

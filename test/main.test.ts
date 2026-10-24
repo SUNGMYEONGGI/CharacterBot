@@ -12,15 +12,15 @@ import { substitute, toSdkConfig } from '../src/main/mcp';
 import * as providers from '../src/main/providers';
 import type { McpServer, Message, Provider, Rule } from '../src/shared/types';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'grokbot-test-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'characterbot-test-'));
 
 // store: defaults, round trip, legacy migration
 const file = path.join(tmp, 'state.json');
-assert.equal(store.load(file).bots[0].name, 'Grok');
+assert.equal(store.load(file).bots[0].name, 'Octo');
 const s = store.defaultState();
 store.save(file, s);
 assert.deepEqual(store.load(file), s);
-fs.writeFileSync(file, JSON.stringify({ settings: { model: 'grok-4', baseUrl: 'x' }, agents: [{ id: 'a1', name: 'RO', color: '#f00', systemPrompt: 'p', messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'yo' }] }] }));
+fs.writeFileSync(file, JSON.stringify({ settings: { baseUrl: 'x' }, agents: [{ id: 'a1', name: 'RO', color: '#f00', systemPrompt: 'p', messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'yo' }] }] }));
 const migrated = store.load(file);
 assert.equal(migrated.bots[0].id, 'a1');
 assert.equal(migrated.convs[0].messages[1].botId, 'a1');
@@ -33,7 +33,7 @@ const call = { name: 'Bash', args: { command: 'rm -rf /' }, botId: 'b1' };
 assert.equal(gateway.decide(call).effect, 'allow');
 assert.equal(gateway.decide(call, [], { Bash: 'ask' }).effect, 'ask');
 assert.equal(gateway.decide({ ...call, name: 'Read' }).effect, 'allow');
-assert.equal(gateway.decide({ ...call, name: 'mcp__grokbot__ask_user' }).effect, 'allow');
+assert.equal(gateway.decide({ ...call, name: 'mcp__characterbot__ask_user' }).effect, 'allow');
 assert.equal(gateway.decide({ ...call, name: 'mcp__github__create_issue' }).effect, 'ask');
 assert.equal(gateway.decide({ ...call, name: 'Write', args: { file_path: 'out/a.md' } }).effect, 'allow');
 assert.equal(gateway.decide({ ...call, name: 'Write', args: { file_path: '/etc/hosts' } }).effect, 'allow');
@@ -146,6 +146,6 @@ assert.equal(gateway.accountWrite('mcp__claude_ai_Gmail__send_email'), true);
 assert.equal(gateway.accountWrite('mcp__claude_ai_Slack__slack_search_public'), false);
 assert.equal(gateway.accountWrite('mcp__linear__create_issue', ['linear']), true);
 assert.equal(gateway.accountWrite('mcp__echo__post_note', ['linear']), false);
-assert.equal(gateway.accountWrite('mcp__grokbot__remember'), false);
+assert.equal(gateway.accountWrite('mcp__characterbot__remember'), false);
 
 console.log('ok');

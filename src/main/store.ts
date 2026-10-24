@@ -24,7 +24,7 @@ function newConv(kind: Conv['kind'], botIds: string[], name = ''): Conv {
 }
 
 function defaultState(): State {
-  const bot = newBot('Grok', 0);
+  const bot = newBot('Octo', 0);
   return {
     settings: {
       userName: '나',
@@ -66,9 +66,8 @@ function migrate(raw: any): State {
   const state = { ...defaults, ...raw, settings: { ...defaults.settings, ...raw.settings }, usage: { ...defaults.usage, ...raw.usage } };
   delete state.settings.baseUrl;
   delete state.settings.auth;
-  // Full permissions became the default (as in Grok Bot); move older installs over once.
+  // Full permissions became the default; move older installs over once.
   if (!raw.settings?.fullAccess && raw.settings) Object.assign(state.settings, { computerAccess: 'allow', fullAccess: true });
-  if (/^(grok|gpt)/.test(state.settings.model)) state.settings.model = ''; // left over from the OpenAI-compatible version
   if (raw.agents && !raw.bots) {
     state.bots = raw.agents.map(({ messages: _, ...a }: any) => ({ ...newBot(a.name, 0), ...a }));
     state.convs = raw.agents.map((a: any) => ({ ...newConv('dm', [a.id]), messages: a.messages.map((m: any) => ({ id: id('msg'), ts: Date.now(), ...m, botId: m.role === 'assistant' ? a.id : undefined })) }));
