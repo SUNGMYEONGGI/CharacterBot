@@ -1,0 +1,76 @@
+{
+  "name": "characterbot",
+  "productName": "CharacterBot",
+  "version": "0.1.0",
+  "description": "Desktop AI bot team on your own Claude and ChatGPT subscriptions",
+  "author": "SUNGMYEONGGI",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test.cjs",
+    "dist": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64"
+  },
+  "build": {
+    "appId": "com.sungmyeonggi.characterbot",
+    "productName": "CharacterBot",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!build/**",
+      "!dist/**",
+      "!test.cjs",
+      "!*.md",
+      "!.github/**"
+    ],
+    "asarUnpack": [
+      "stt.swift",
+      "node_modules/@anthropic-ai/claude-agent-sdk-*/**",
+      "node_modules/@openai/codex-*/**"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "음성 메모와 음성 채팅에 마이크를 사용합니다.",
+        "NSSpeechRecognitionUsageDescription": "음성을 기기 안에서 텍스트로 바꿉니다."
+      }
+    },
+    "dmg": {
+      "title": "CharacterBot"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "SUNGMYEONGGI",
+      "repo": "CharacterBot"
+    },
+    "afterPack": "build/adhoc-sign.cjs"
+  },
+  "devDependencies": {
+    "electron": "38.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "allowScripts": {
+    "electron@38.2.0": true
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.295",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@openai/codex-sdk": "^0.163.0",
+    "dompurify": "3.4.16",
+    "katex": "0.16.47",
+    "marked": "18.1.0",
+    "mermaid": "11.17.2",
+    "zod": "4.6.5"
+  }
+}
