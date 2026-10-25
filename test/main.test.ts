@@ -112,6 +112,8 @@ assert.deepEqual(plugin.skills, [{ name: 'review', description: 'Review code', b
 
 // mcp: secret substitution and SDK config shape
 assert.deepEqual(substitute({ env: { T: '${GH}' }, args: ['x${GH}'] }, { GH: 'tok' }), { env: { T: 'tok' }, args: ['xtok'] });
+process.env.CB_TEST_ENV = 'leak';
+assert.equal(substitute('${CB_TEST_ENV}', {}), ''); // never falls back to process.env
 assert.deepEqual(toSdkConfig([
   { id: 'm1', name: 'my server', source: 'user', enabled: true, command: 'npx', args: ['x'], env: { T: '${GH}' } },
   { id: 'm2', name: 'gh', source: 'user', enabled: true, url: 'https://x/mcp', headers: { A: 'Bearer ${GH}' } },

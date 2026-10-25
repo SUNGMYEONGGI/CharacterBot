@@ -11,10 +11,11 @@ export type Tokens = Record<string, string>;
 
 const slug = (s: string): string => String(s).replace(/[^a-zA-Z0-9_-]/g, '_');
 
-// Replaces ${NAME} with secret values so tokens never live in the config.
+// Replaces ${NAME} with stored secrets (설정 › 시크릿 only, never process.env)
+// so tokens never live in the config.
 function substitute<T>(value: T, secrets: Secrets): T;
 function substitute(value: unknown, secrets: Secrets): unknown {
-  if (typeof value === 'string') return value.replace(/\$\{([A-Za-z0-9_]+)\}/g, (_, k) => secrets[k] ?? process.env[k] ?? '');
+  if (typeof value === 'string') return value.replace(/\$\{([A-Za-z0-9_]+)\}/g, (_, k) => secrets[k] ?? '');
   if (Array.isArray(value)) return value.map((v) => substitute(v, secrets));
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, substitute(v, secrets)]));
   return value;

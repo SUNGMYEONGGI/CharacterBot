@@ -77,7 +77,7 @@
     "@anthropic-ai/claude-agent-sdk": "0.3.295",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@openai/codex-sdk": "^0.163.0",
-    "zod": "4.6.5"
+    "zod": "^4.6.7"
   },
   "license": "Apache-2.0"
 }
