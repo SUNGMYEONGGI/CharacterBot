@@ -40,7 +40,7 @@ a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px soli
 code { font: 13px/1.4 var(--mono); background: var(--bubble); padding: 2px 6px; border-radius: 6px; overflow-wrap: anywhere; }
 h1, h2, h3 { font-family: var(--display); margin: 0; }
 
-.rail { width: min(1120px, 100%); margin-inline: auto; background: var(--paper); border-inline: 1px solid var(--line); }
+.rail { width: 100%; background: var(--paper); }
 main > section { position: relative; border-top: 1px solid var(--line); padding: 88px clamp(16px, 5vw, 56px); }
 main > section:first-child { border-top: 0; }
 .head { max-width: 680px; margin-bottom: 44px; }
@@ -83,7 +83,7 @@ h1 { font: 800 clamp(40px, 6.4vw, 76px)/1 var(--display); letter-spacing: -.035e
 /* ---------- demo app ---------- */
 .demo { padding-top: 48px !important; overflow: hidden; }
 .glow { position: absolute; left: 50%; top: 18%; width: min(900px, 120%); height: 60%; transform: translateX(-50%); background: radial-gradient(closest-side, var(--glow), transparent); filter: blur(30px); pointer-events: none; }
-.app { position: relative; max-width: 980px; margin-inline: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--card); overflow: hidden;
+.app { position: relative; max-width: 1200px; margin-inline: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--card); overflow: hidden;
   box-shadow: 0 30px 80px -30px rgba(20, 40, 90, .35), 0 0 0 6px color-mix(in srgb, var(--line) 45%, transparent); }
 .app-bar { display: flex; align-items: center; gap: 7px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 600; color: var(--muted); }
 .app-bar i { width: 11px; height: 11px; border-radius: 50%; background: var(--line); }
