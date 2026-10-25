@@ -427,7 +427,11 @@ async function botTurn(conv: Conv, bot: Bot, initiator: Initiator, signal: Abort
     webhookUrl: triggers.webhookUrl,
     cancelRoutine: (id) => { const r = state.routines.find((x) => x.id === id && x.convId === conv.id); if (r) r.enabled = false; },
     models: () => [...models, ...openaiModels],
-    createBot: (args) => createBotFor(args),
+    createBot: (args) => {
+      const made = createBotFor(args);
+      greet(bot, made);
+      return made;
+    },
     updateBot: (args) => updateBotFor(args),
     createTeam: (name, names) => {
       if (state.convs.some((c) => c.kind === 'group' && c.name === name.trim())) throw new Error(`"${name}" 팀이 이미 있어요`);
@@ -791,6 +795,19 @@ function updateBotFor({ name, role, instructions, model }: { name: string; role?
   if (model !== undefined) bot.model = model;
   broadcast();
   return bot;
+}
+
+// Like Grok Bot, a Bot made by another Bot says hello first. The maker's note
+// stays folded under the greeting as "보낸 사람 [maker]".
+function greet(from: Bot, bot: Bot): void {
+  const dm = state.convs.find((c) => c.kind === 'dm' && c.botIds[0] === bot.id);
+  if (!dm) return;
+  dm.messages.push({
+    id: store.id('msg'), role: 'user', ts: Date.now(), fromBotId: from.id, brief: true,
+    content: `${from.name}이(가) 당신을 만들었어요. ${state.settings.userName}님에게 먼저 인사하고, 맡은 역할로 무엇을 해 줄 수 있는지와 시작하려면 무엇이 필요한지 2~4문장으로 말하세요. 도구는 쓰지 마세요.`,
+  });
+  touch(dm);
+  void respond(dm, [bot.id], 'bot');
 }
 
 // A bot posts to a team chat (message_team); the mentioned members, or all of

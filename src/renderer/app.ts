@@ -395,19 +395,37 @@ function bundleItem(c: Conv, run: Message[]): HTMLElement {
   const open = ui.bundles.has(key);
   return h('div', { class: `bundle${open ? ' open' : ''}` },
     h('button', { class: 'bundle-head', onclick: () => { if (open) ui.bundles.delete(key); else ui.bundles.add(key); renderThread(); } },
-      `메시지 ${n}개 · `, avatar(from, 18), h('b', {}, from?.name || 'Bot'), icon(open ? 'down' : 'chevron', 14)),
+      `메시지 ${n}개 · `, avatar(from, 18), h('b', {}, from?.name || 'Bot')),
     open ? h('div', { class: 'bundle-body' }, messageItems(c, run.map(({ viaBotId, ...m }) => m))) : null);
 }
 
+// "보낸 사람 [avatar] name" under a greeting; opens the maker's note.
+function briefItem(m: Message): HTMLElement {
+  const from = botById(m.fromBotId);
+  const open = ui.bundles.has(m.id);
+  return h('div', { class: `bundle${open ? ' open' : ''}` },
+    h('button', { class: 'bundle-head', onclick: () => { if (open) ui.bundles.delete(m.id); else ui.bundles.add(m.id); renderThread(); } },
+      '보낸 사람 ', avatar(from, 18), h('b', {}, from?.name || 'Bot')),
+    open ? h('div', { class: 'bundle-body' }, h('div', { class: 'grouped' }, avatar(from, 22), h('div', { class: 'msg bot', html: md(m.content) }))) : null);
+}
+
 // Render items (bubbles, cards, time stamps) for a list of messages.
-function messageItems(c: Conv, list: Message[], opts: { inThread?: boolean } = {}): HTMLElement[] {
+function messageItems(c: Conv, list: Message[], opts: { inThread?: boolean; since?: number } = {}): HTMLElement[] {
   const items: HTMLElement[] = [];
-  let lastTs = 0;
+  let lastTs = opts.since || 0;
   let lastSender: string | null | undefined = null;
   for (let i = 0; i < list.length; i++) {
     const m = list[i];
     if (m.ts - lastTs > 30 * 60_000) { items.push(h('div', { class: 'when' }, relativeDay(m.ts))); lastSender = null; }
     lastTs = m.ts;
+    if (m.brief) {
+      let j = i;
+      while (j + 1 < list.length && !(list[j + 1].role === 'user' && !list[j + 1].viaBotId)) j++;
+      items.push(...messageItems(c, list.slice(i + 1, j + 1), { ...opts, since: m.ts }), briefItem(m));
+      i = j;
+      lastSender = null;
+      continue;
+    }
     if (m.viaBotId) {
       let j = i;
       while (j + 1 < list.length && list[j + 1].viaBotId === m.viaBotId) j++;

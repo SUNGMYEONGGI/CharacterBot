@@ -76,6 +76,7 @@ export interface Message {
   routineId?: string;
   event?: string;
   fromBotId?: string;
+  brief?: boolean; // a maker Bot's hidden note that made this Bot say hello
   // assistant messages
   toolCalls?: ToolCall[];
   error?: string;
