@@ -55,8 +55,10 @@ async function claudeLogin(email?: string) {
 const claudeLogout = () => run(['auth', 'logout'], 20_000);
 
 // Environment for an SDK query on `provider`. `key` is the provider's stored secret.
-function env(base: NodeJS.ProcessEnv, provider: Provider | undefined, key: string | undefined): NodeJS.ProcessEnv {
+// `hide`: names of the user's stored secrets, dropped even when the shell set them.
+function env(base: NodeJS.ProcessEnv, provider: Provider | undefined, key: string | undefined, hide: string[] = []): NodeJS.ProcessEnv {
   const out = { ...base };
+  for (const name of hide) delete out[name];
   delete out.ANTHROPIC_API_KEY;
   delete out.ANTHROPIC_AUTH_TOKEN;
   delete out.ANTHROPIC_BASE_URL;

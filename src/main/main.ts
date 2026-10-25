@@ -319,7 +319,7 @@ function createRoutine(conv: Conv, bot: Bot, args: ScheduleInput & { prompt: str
 function agentEnv(secrets: SecretStore): NodeJS.ProcessEnv {
   const provider = activeProvider();
   // User secrets stay out: they only reach MCP configs through ${NAME} placeholders.
-  return providers.env({ ...process.env }, provider, providerKey(secrets, provider?.id));
+  return providers.env(process.env, provider, providerKey(secrets, provider?.id), Object.keys(userSecretsFrom(secrets)));
 }
 
 // Records one finished tool call: transcript entry content, cards and audit row.
