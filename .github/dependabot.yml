@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      sdks:
+        patterns: ["@anthropic-ai/*", "@openai/*", "@modelcontextprotocol/*", "zod"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

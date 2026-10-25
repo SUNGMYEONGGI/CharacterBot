@@ -112,6 +112,8 @@ assert.deepEqual(plugin.skills, [{ name: 'review', description: 'Review code', b
 
 // mcp: secret substitution and SDK config shape
 assert.deepEqual(substitute({ env: { T: '${GH}' }, args: ['x${GH}'] }, { GH: 'tok' }), { env: { T: 'tok' }, args: ['xtok'] });
+process.env.CB_TEST_ENV = 'leak';
+assert.equal(substitute('${CB_TEST_ENV}', {}), ''); // never falls back to process.env
 assert.deepEqual(toSdkConfig([
   { id: 'm1', name: 'my server', source: 'user', enabled: true, command: 'npx', args: ['x'], env: { T: '${GH}' } },
   { id: 'm2', name: 'gh', source: 'user', enabled: true, url: 'https://x/mcp', headers: { A: 'Bearer ${GH}' } },
@@ -133,6 +135,8 @@ assert.deepEqual(providers.env(envBase, prov({ kind: 'claude' }), undefined), { 
 assert.equal(providers.env(envBase, prov({ kind: 'anthropic' }), 'k').ANTHROPIC_API_KEY, 'k');
 assert.deepEqual(providers.env(envBase, prov({ kind: 'custom', baseUrl: 'https://g.example' }), 't'), { PATH: '/bin', ANTHROPIC_BASE_URL: 'https://g.example', ANTHROPIC_AUTH_TOKEN: 't' });
 assert.throws(() => providers.env(envBase, prov({ kind: 'anthropic', name: 'Anthropic' }), undefined));
+// stored secret names never reach a bot, even when the shell exported them
+assert.deepEqual(providers.env({ PATH: '/bin', MY_TOKEN: 'host' }, prov({ kind: 'anthropic' }), 'k', ['MY_TOKEN']), { PATH: '/bin', ANTHROPIC_API_KEY: 'k' });
 
 // Full permissions by default, but external-app writes ask first.
 assert.equal(gateway.decide({ name: 'mcp__claude_ai_Google_Calendar__list_events', args: {} }).effect, 'allow');

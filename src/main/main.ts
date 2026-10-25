@@ -318,7 +318,8 @@ function createRoutine(conv: Conv, bot: Bot, args: ScheduleInput & { prompt: str
 
 function agentEnv(secrets: SecretStore): NodeJS.ProcessEnv {
   const provider = activeProvider();
-  return providers.env({ ...process.env, ...userSecretsFrom(secrets) }, provider, providerKey(secrets, provider?.id));
+  // User secrets stay out: they only reach MCP configs through ${NAME} placeholders.
+  return providers.env(process.env, provider, providerKey(secrets, provider?.id), Object.keys(userSecretsFrom(secrets)));
 }
 
 // Records one finished tool call: transcript entry content, cards and audit row.
@@ -1147,7 +1148,7 @@ const actions = {
   },
   addProvider({ kind, name, baseUrl, key }: { kind: Provider['kind']; name?: string; baseUrl?: string; key: string }) {
     if (!key) throw new Error('키를 입력하세요');
-    if (kind === 'custom' && !/^https?:\/\//.test(baseUrl || '')) throw new Error('Base URL을 입력하세요');
+    if (kind === 'custom' && !/^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$))/.test(baseUrl || '')) throw new Error('Base URL은 https:// 로 시작해야 해요 (localhost만 http 허용)');
     const provider: Provider = { id: store.id('prov'), kind, name: name || providers.KINDS[kind].title, ...(kind === 'custom' ? { baseUrl } : {}) };
     state.settings.providers.push(provider);
     writeSecrets({ ...readSecrets(), [`__provider_${provider.id}`]: key });
