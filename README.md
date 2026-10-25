@@ -1,14 +1,14 @@
 <div align="center">
 
-<img src="build/icon.png" width="128" alt="CharacterBot icon">
+<img src="build/icon.png" width="128" alt="PixelBot icon">
 
-# CharacterBot
+# PixelBot
 
 **A team of AI coworkers that lives on your Mac and runs on the subscriptions you already pay for.** Give each Bot a name, a personality, a model, a memory and a folder of its own, then talk to them the way you talk to people: in DMs, in groups and in threads.
 
 Claude Bots run on the Claude Agent SDK with your Claude login. ChatGPT Bots and image generation run on the Codex SDK with your ChatGPT login. No API keys, no server, no database: one desktop app, and everything stays on your machine.
 
-[**Website**](https://sungmyeonggi.github.io/CharacterBot/) · [**Download**](https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest/download/CharacterBot-arm64.dmg) · [**Quick start**](#quick-start) · [**Features**](#features) · [**Architecture**](#architecture) · [**Security model**](#security-model) · [**Build and release**](#build-and-release)
+[**Website**](https://sungmyeonggi.github.io/CharacterBot/) · [**Download**](https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest/download/PixelBot-arm64.dmg) · [**Quick start**](#quick-start) · [**Features**](#features) · [**Architecture**](#architecture) · [**Security model**](#security-model) · [**Build and release**](#build-and-release)
 
 [![Release](https://github.com/SUNGMYEONGGI/CharacterBot/actions/workflows/release.yml/badge.svg)](https://github.com/SUNGMYEONGGI/CharacterBot/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/SUNGMYEONGGI/CharacterBot)](https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest)
@@ -19,9 +19,9 @@ Claude Bots run on the Claude Agent SDK with your Claude login. ChatGPT Bots and
 
 </div>
 
-> **Alpha, and a personal project.** CharacterBot is early. It has been exercised by hand, not evaluated on real workloads. Expect rough edges, and read [Security model](#security-model) and [Limitations](#limitations) before you point it at anything that matters.
+> **Alpha, and a personal project.** PixelBot is early. It has been exercised by hand, not evaluated on real workloads. Expect rough edges, and read [Security model](#security-model) and [Limitations](#limitations) before you point it at anything that matters.
 
-> **Your subscriptions, your machine.** CharacterBot signs in through the Claude Code and Codex logins on this computer. It never asks for your password, never ships an OAuth client of its own for those logins, and keeps every conversation, memory and file under `~/Library/Application Support`.
+> **Your subscriptions, your machine.** PixelBot signs in through the Claude Code and Codex logins on this computer. It never asks for your password, never ships an OAuth client of its own for those logins, and keeps every conversation, memory and file under `~/Library/Application Support`.
 
 > **The UI is in Korean.** Labels and the Bots' default instructions are written in Korean. The Bots answer in whatever language you write to them.
 
@@ -70,23 +70,23 @@ The quickest way installs the latest release into Applications and opens it:
 curl -fsSL https://sungmyeonggi.github.io/CharacterBot/install.sh | sh
 ```
 
-Files downloaded with `curl` carry no quarantine flag, so macOS doesn't show the "Apple could not verify CharacterBot" warning. The script is [`site/install.sh`](site/install.sh).
+Files downloaded with `curl` carry no quarantine flag, so macOS doesn't show the "Apple could not verify PixelBot" warning. The script is [`site/install.sh`](site/install.sh).
 
 To install by hand instead:
 
-1. Download [`CharacterBot-arm64.dmg`](https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest/download/CharacterBot-arm64.dmg), the latest release (or pick one from [Releases](https://github.com/SUNGMYEONGGI/CharacterBot/releases)).
-2. Drag **CharacterBot** to Applications.
+1. Download [`PixelBot-arm64.dmg`](https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest/download/PixelBot-arm64.dmg), the latest release (or pick one from [Releases](https://github.com/SUNGMYEONGGI/CharacterBot/releases)).
+2. Drag **PixelBot** to Applications.
 3. Builds without a Developer ID signature are ad-hoc signed, so Gatekeeper stops the first launch. Open System Settings › **Privacy & Security** and click **Open Anyway**, or run:
 
    ```sh
-   xattr -dr com.apple.quarantine /Applications/CharacterBot.app
+   xattr -dr com.apple.quarantine /Applications/PixelBot.app
    ```
 
 ### From source
 
 ```sh
 git clone https://github.com/SUNGMYEONGGI/CharacterBot.git
-cd CharacterBot
+cd PixelBot
 npm install
 npm start      # builds into out/ and launches Electron
 ```
@@ -196,7 +196,7 @@ The tools every Bot gets from the app, on top of the file, shell and web tools o
 
 Everything is set in the app; there is no `.env`. What is stored where:
 
-| Path (under `~/Library/Application Support/CharacterBot/`) | Contents |
+| Path (under `~/Library/Application Support/PixelBot/`) | Contents |
 | --- | --- |
 | `state.json` | Settings, Bots, chats, memories, skills, routines, rules, activity log, usage. |
 | `secrets.bin` | Tokens and keys, encrypted with `safeStorage`. |
@@ -278,7 +278,7 @@ Builds use [electron-builder](https://www.electron.build); the configuration is 
 npm run typecheck  # tsc, no output files
 npm test           # unit tests (tsx)
 npm run build      # esbuild: out/main.cjs, out/preload.cjs, out/renderer/
-npm run dist       # build, then dist/CharacterBot-arm64.dmg and CharacterBot-<version>-arm64-mac.zip
+npm run dist       # build, then dist/PixelBot-arm64.dmg and PixelBot-<version>-arm64-mac.zip
 ```
 
 | Item | Value |
@@ -300,7 +300,7 @@ Releases are continuous. Every push to `main` that changes the app runs `.github
 3. package the `.dmg` and `.zip`,
 4. publish them as GitHub Release `v<version>` with notes generated from the commits, marked latest.
 
-The download button on the website and in this README links to `releases/latest/download/CharacterBot-arm64.dmg`, so it always serves the newest build. Changes to `site/` or Markdown files alone don't cut a release. To start a new minor line, change `version` in `package.json` (for example to `0.2.0`). You can also run the workflow by hand from the Actions tab.
+The download button on the website and in this README links to `releases/latest/download/PixelBot-arm64.dmg`, so it always serves the newest build. Changes to `site/` or Markdown files alone don't cut a release. To start a new minor line, change `version` in `package.json` (for example to `0.2.0`). You can also run the workflow by hand from the Actions tab.
 
 ### Website
 
@@ -344,7 +344,7 @@ npm run typecheck
 npm test
 ```
 
-Running from source stores data in `~/Library/Application Support/CharacterBot Dev`; the installed app uses `CharacterBot`, so a fresh install starts at the first-run setup (account sign-in, name, starter team, first task).
+Running from source stores data in `~/Library/Application Support/PixelBot Dev`; the installed app uses `PixelBot`, so a fresh install starts at the first-run setup (account sign-in, name, starter team, first task).
 
 Optional cloud backup on Supabase: see [docs/supabase.md](docs/supabase.md).
 
@@ -368,7 +368,7 @@ Every change needs `npm run build` (which `npm start` runs) and a restart. Pull 
 
 ## Acknowledgements
 
-- CharacterBot is an independent project, not affiliated with or endorsed by Anthropic or OpenAI.
+- PixelBot is an independent project, not affiliated with or endorsed by Anthropic or OpenAI.
 - The gateway and routine limits borrow from [CopilotKit OpenBot](https://github.com/CopilotKit/OpenBot).
 - Logos in the app catalog belong to their services and are used only to identify them.
 

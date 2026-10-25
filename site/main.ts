@@ -2,7 +2,7 @@
 import { avatarSvg } from '../src/renderer/ui';
 
 const REPO = 'SUNGMYEONGGI/CharacterBot';
-const DMG = 'CharacterBot-arm64.dmg';
+const DMG = 'PixelBot-arm64.dmg';
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;
 

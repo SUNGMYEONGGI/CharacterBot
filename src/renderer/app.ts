@@ -1091,7 +1091,7 @@ function profileEditor(state: Look, nameField: HTMLElement | null = null) {
     fill(body, seg, h('div', { class: 'studio' }, face, nameField,
       ready ? [drop, file, note,
         h('button', { class: 'btn soft', disabled: busy ? true : null, onclick: generate }, icon('sparkle', 15), busy ? ' 생성 중… (1분 정도)' : state.image ? ' 다시 생성' : ' 프로필 생성'),
-        h('div', { class: 'muted small' }, 'ChatGPT 구독으로 CharacterBot 스타일 프로필 아이콘을 만들어요.')]
+        h('div', { class: 'muted small' }, 'ChatGPT 구독으로 PixelBot 스타일 프로필 아이콘을 만들어요.')]
         : [h('div', { class: 'muted small', style: 'text-align:center' }, 'AI 프로필은 ChatGPT 구독으로 만들어요.'),
           h('button', { class: 'btn soft', onclick: () => { closeModal(); openSettings('general'); } }, icon('openai', 15), ' ChatGPT 연결')]));
   };

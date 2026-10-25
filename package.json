@@ -1,7 +1,7 @@
 {
   "name": "characterbot",
-  "productName": "CharacterBot",
-  "version": "0.1.0",
+  "productName": "PixelBot",
+  "version": "0.2.0",
   "description": "Desktop AI bot team on your own Claude and ChatGPT subscriptions",
   "author": "SUNGMYEONGGI",
   "private": true,
@@ -16,7 +16,7 @@
   },
   "build": {
     "appId": "com.sungmyeonggi.characterbot",
-    "productName": "CharacterBot",
+    "productName": "PixelBot",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -47,7 +47,7 @@
       }
     },
     "dmg": {
-      "title": "CharacterBot",
+      "title": "PixelBot",
       "artifactName": "${productName}-${arch}.${ext}"
     },
     "publish": {

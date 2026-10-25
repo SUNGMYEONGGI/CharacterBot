@@ -101,7 +101,7 @@ export function icon(name: string, size = 18): HTMLElement {
   });
 }
 
-// ---------- bot avatars: procedural blob shapes with two eyes ----------
+// ---------- bot avatars: pixel sprites of procedural shapes with two eyes ----------
 
 // r(θ) = 1 + a·cos(n·θ + phase), sampled and scaled to fit a 100×100 box.
 type Pt = [number, number];
@@ -153,37 +153,75 @@ const SHAPE_POINTS = [
 ];
 export const SHAPE_COUNT = SHAPE_POINTS.length;
 
-const pathCache = new Map<number, string>();
-function shapePath(i: number): string {
-  const cached = pathCache.get(i);
+// Each shape is rasterized onto a GRID×GRID pixel grid. Pixels touching the
+// outside get a dark rim on the lower right and a light one on the upper left.
+const GRID = 16;
+const PX = 100 / GRID;
+const spriteCache = new Map<number, Uint8Array>(); // 0 empty, 1 body, 2 shade, 3 highlight
+function sprite(i: number): Uint8Array {
+  const cached = spriteCache.get(i);
   if (cached) return cached;
   const pts = SHAPE_POINTS[i]();
   const max = Math.max(...pts.flat().map(Math.abs));
-  const scaled = pts.map(([x, y]) => [50 + (x / max) * 45, 52 + (y / max) * 45]);
-  // Closed Catmull-Rom curve through the samples for smooth edges.
-  let d = `M${scaled[0][0].toFixed(1)},${scaled[0][1].toFixed(1)}`;
-  for (let k = 0; k < scaled.length; k++) {
-    const p0 = scaled[(k - 1 + scaled.length) % scaled.length];
-    const p1 = scaled[k];
-    const p2 = scaled[(k + 1) % scaled.length];
-    const p3 = scaled[(k + 2) % scaled.length];
-    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
-    const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-    d += `C${c1.map((v) => v.toFixed(1))} ${c2.map((v) => v.toFixed(1))} ${p2.map((v) => v.toFixed(1))}`;
+  const poly = pts.map(([x, y]) => [50 + (x / max) * 46, 53 + (y / max) * 46]);
+  const inside = (x: number, y: number) => {
+    let hit = false;
+    for (let a = 0, b = poly.length - 1; a < poly.length; b = a++) {
+      const [xa, ya] = poly[a];
+      const [xb, yb] = poly[b];
+      if (ya > y !== yb > y && x < ((xb - xa) * (y - ya)) / (yb - ya) + xa) hit = !hit;
+    }
+    return hit;
+  };
+  const g = new Uint8Array(GRID * GRID);
+  for (let r = 0; r < GRID; r++) for (let c = 0; c < GRID; c++) g[r * GRID + c] = inside((c + 0.5) * PX, (r + 0.5) * PX) ? 1 : 0;
+  const on = (r: number, c: number) => r >= 0 && c >= 0 && r < GRID && c < GRID && g[r * GRID + c] > 0;
+  const out = g.slice();
+  for (let r = 0; r < GRID; r++) for (let c = 0; c < GRID; c++) {
+    if (!g[r * GRID + c]) continue;
+    if (!on(r + 1, c) || !on(r, c + 1)) out[r * GRID + c] = 2;
+    else if (!on(r - 1, c) || !on(r, c - 1)) out[r * GRID + c] = 3;
   }
-  pathCache.set(i, `${d}Z`);
-  return `${d}Z`;
+  spriteCache.set(i, out);
+  return out;
+}
+
+// Mixes a #rrggbb color toward black (t < 0) or white (t > 0).
+function tint(hex: string, t: number): string {
+  const n = /^#[0-9a-f]{6}$/i.test(hex) ? parseInt(hex.slice(1), 16) : 0x999999;
+  const to = t < 0 ? 0 : 255;
+  const ch = (v: number) => Math.round(v + (to - v) * Math.abs(t)).toString(16).padStart(2, '0');
+  return `#${ch(n >> 16)}${ch((n >> 8) & 255)}${ch(n & 255)}`;
+}
+
+// One <rect> per horizontal run of same-colored pixels.
+const px = (c: number, r: number, w: number, h: number, fill: string, cls = '') =>
+  `<rect${cls ? ` class="${cls}"` : ''} x="${c * PX}" y="${r * PX}" width="${w * PX}" height="${h * PX}" fill="${fill}"/>`;
+function runs(g: Uint8Array, colors: string[]): string {
+  let out = '';
+  for (let r = 0; r < GRID; r++) {
+    for (let c = 0; c < GRID; ) {
+      const v = g[r * GRID + c];
+      let e = c + 1;
+      while (e < GRID && g[r * GRID + e] === v) e++;
+      if (v) out += px(c, r, e - c, 1, colors[v]);
+      c = e;
+    }
+  }
+  return out;
 }
 
 // Body and eyes are separate groups so CSS can animate them: .av-body moves the
 // whole bot, .av-look shifts the eyes (gaze), .eye blinks.
 export function avatarSvg(shape = 0, color = '#999', size = 40, { sleeping = false } = {}): string {
   const i = Number.isInteger(shape) && shape < SHAPE_COUNT ? shape : 0;
-  const leaf = i === SHAPE_COUNT - 1 ? '<path d="M52 9c6-6 14-6 18-3-4 5-11 7-18 3z" fill="#2ec27e"/><path d="M51 12l-2-8" stroke="#3a2a1a" stroke-width="2.5" stroke-linecap="round"/>' : '';
+  const body = runs(sprite(i), ['', color, tint(color, -0.32), tint(color, 0.28)]);
+  const leaf = i === SHAPE_COUNT - 1 ? px(8, 0, 1, 2, '#3a2a1a') + px(9, 0, 2, 1, '#2ec27e') + px(10, 1, 2, 1, '#2ec27e') : '';
+  // The two white eyes, the right one a pixel higher (the old tilted look).
   const eyes = sleeping
-    ? '<rect x="38" y="47" width="10" height="5" rx="2.5" fill="#fff"/><rect x="54" y="47" width="10" height="5" rx="2.5" fill="#fff"/>'
-    : '<g class="av-look"><g transform="rotate(-14 62 35)"><rect class="eye" x="52" y="27" width="7" height="17" rx="3.5" fill="#fff"/><rect class="eye" x="65" y="27" width="7" height="17" rx="3.5" fill="#fff"/></g></g>';
-  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" overflow="visible"><g class="av-body"><path d="${shapePath(i)}" fill="${color}"/>${leaf}${eyes}</g></svg>`;
+    ? px(6, 8, 2, 1, '#fff') + px(9, 8, 2, 1, '#fff')
+    : `<g class="av-look">${px(9, 5, 1, 3, '#fff', 'eye')}${px(11, 4, 1, 3, '#fff', 'eye')}</g>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 100 100" overflow="visible" shape-rendering="crispEdges"><g class="av-body">${body}${leaf}${eyes}</g></svg>`;
 }
 
 // Older saves stored shapes as names.

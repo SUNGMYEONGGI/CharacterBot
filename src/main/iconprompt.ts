@@ -1,7 +1,7 @@
-// System prompt for CharacterBot profile icons: a source image reinterpreted as
+// System prompt for PixelBot profile icons: a source image reinterpreted as
 // one of the app's round, capsule-eyed characters.
 const BOT_ICON_PROMPT = `[목표]
-사용자가 준 이미지 속 인물·캐릭터·사물을 CharacterBot 프로필 아이콘 한 장으로 다시 그린다. 원본은 "누구인지 알아볼 단서"로만 쓰고, 얼굴과 화풍은 아래 규격을 따른다.
+사용자가 준 이미지 속 인물·캐릭터·사물을 PixelBot 프로필 아이콘 한 장으로 다시 그린다. 원본은 "누구인지 알아볼 단서"로만 쓰고, 얼굴과 화풍은 아래 규격을 따른다.
 
 [원본에서 가져올 것]
 - 피부(또는 표면) 기본색, 머리색, 헤어 실루엣.

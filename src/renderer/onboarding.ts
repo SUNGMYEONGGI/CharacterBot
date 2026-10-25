@@ -62,7 +62,7 @@ const VIEWS: Record<Step, () => Child[]> = {
   welcome: () => [
     h('div', { class: 'ob-cast' }, ...[[0, '#a0673b'], [4, '#ef3b4b'], [1, '#2f7cf6'], [13, '#f26a1b'], [3, '#8b5cf6']].map(([shape, color]) =>
       avatar({ shape: shape as number, color: color as string }, 64, 'idle'))),
-    h('h1', null, 'CharacterBot에 오신 것을 환영해요'),
+    h('h1', null, 'PixelBot에 오신 것을 환영해요'),
     h('p', { class: 'ob-lede' }, '내 Mac에서 함께 일하는 Bot 팀을 만들어요. 먼저 Bot들이 쓸 AI 계정을 연결할게요.'),
     h('div', { class: 'ob-actions' }, h('button', { class: 'btn primary big', onclick: () => show('accounts') }, '시작하기')),
   ],

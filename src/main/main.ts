@@ -13,6 +13,7 @@ import * as triggers from './triggers';
 import * as plugins from './plugins';
 import * as oauth from './oauth';
 import * as providers from './providers';
+import * as rename from './rename';
 import * as imagegen from './imagegen';
 import { pendingPrompt, mentionedBots } from './transcript';
 import os from 'node:os';
@@ -40,8 +41,14 @@ type Tag = { threadOf?: string; viaBotId?: string };
 type ApprovalDone = (decision: 'allow' | 'deny' | 'always', args?: Record<string, unknown>) => void;
 
 // `npm start` keeps its data apart from the installed app, so a fresh install
-// starts at first-run setup instead of showing development chats.
-if (!app.isPackaged) app.setPath('userData', path.join(app.getPath('appData'), 'CharacterBot Dev'));
+// starts at first-run setup instead of showing development chats. A v0.1.x
+// CharacterBot folder moves over on first launch.
+{
+  const suffix = app.isPackaged ? '' : ' Dev';
+  const dir = path.join(app.getPath('appData'), `PixelBot${suffix}`);
+  rename.moveDataDir(path.join(app.getPath('appData'), `${rename.LEGACY_NAME}${suffix}`), dir);
+  app.setPath('userData', dir);
+}
 
 // Takes effect on the next launch (settings › 일반 › 시스템).
 if (store.load(path.join(app.getPath('userData'), 'state.json')).settings.hardwareAcceleration === false) app.disableHardwareAcceleration();
@@ -116,9 +123,30 @@ function broadcast() {
 
 // ---------- secrets (encrypted with the OS keychain) ----------
 
+let legacyTried = false;
 function readSecrets(): SecretStore {
+  let blob: Buffer;
   try {
-    return JSON.parse(safeStorage.decryptString(fs.readFileSync(secretsFile())));
+    blob = fs.readFileSync(secretsFile());
+  } catch {
+    return {};
+  }
+  try {
+    return JSON.parse(safeStorage.decryptString(blob));
+  } catch {}
+  // Written by CharacterBot (v0.1.x) under its own Keychain item: re-encrypt once.
+  // Asked at most once per launch; a declined prompt keeps a copy of the old file.
+  if (legacyTried) return {};
+  legacyTried = true;
+  const legacy = rename.decryptLegacy(blob);
+  if (!legacy) {
+    fs.copyFileSync(secretsFile(), `${secretsFile()}.${rename.LEGACY_NAME}`);
+    return {};
+  }
+  try {
+    const secrets = JSON.parse(legacy) as SecretStore;
+    if (safeStorage.isEncryptionAvailable()) fs.writeFileSync(secretsFile(), safeStorage.encryptString(legacy));
+    return secrets;
   } catch {
     return {};
   }
@@ -1457,7 +1485,7 @@ function createWindow() {
     height: 960,
     minWidth: 960,
     minHeight: 600,
-    title: 'CharacterBot',
+    title: 'PixelBot',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 18 },
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true },

@@ -77,7 +77,7 @@ async function generate({ source, note }: { source: string | null; note?: string
   const codex = new Codex({ codexPathOverride: codexBin(), env: { ...process.env, CODEX_HOME: botHome(home) }, config: { developer_instructions: BOT_ICON_PROMPT } });
   const thread = codex.startThread({ workingDirectory: cwd, skipGitRepoCheck: true, sandboxMode: 'read-only', approvalPolicy: 'never' });
   const ask = [
-    source ? '첨부한 이미지 속 대상을 CharacterBot 아이콘으로 바꿔 주세요.' : '아래 설명의 캐릭터를 CharacterBot 아이콘으로 만들어 주세요.',
+    source ? '첨부한 이미지 속 대상을 PixelBot 아이콘으로 바꿔 주세요.' : '아래 설명의 캐릭터를 PixelBot 아이콘으로 만들어 주세요.',
     note ? `추가 요청: ${note}` : '',
     '내장 image_gen 도구를 바로 한 번 호출해 아이콘 한 장만 생성하세요. 파일을 읽거나 명령을 실행하지 마세요.',
   ].filter(Boolean).join('\n');

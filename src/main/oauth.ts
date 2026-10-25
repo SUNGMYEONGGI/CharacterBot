@@ -45,7 +45,7 @@ function provider(server: McpServer, rec: OauthRecord, save: () => void, client:
     state: () => state,
     redirectUrl: REDIRECT_URI,
     clientMetadata: {
-      client_name: 'CharacterBot',
+      client_name: 'PixelBot',
       redirect_uris: [REDIRECT_URI],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],

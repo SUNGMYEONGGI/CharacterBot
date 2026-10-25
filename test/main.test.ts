@@ -10,6 +10,8 @@ import * as plugins from '../src/main/plugins';
 import { pendingPrompt, mentionedBots } from '../src/main/transcript';
 import { substitute, toSdkConfig } from '../src/main/mcp';
 import * as providers from '../src/main/providers';
+import * as rename from '../src/main/rename';
+import crypto from 'node:crypto';
 import type { McpServer, Message, Provider, Rule } from '../src/shared/types';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'characterbot-test-'));
@@ -153,5 +155,37 @@ assert.equal(gateway.accountWrite('mcp__claude_ai_Slack__slack_search_public'), 
 assert.equal(gateway.accountWrite('mcp__linear__create_issue', ['linear']), true);
 assert.equal(gateway.accountWrite('mcp__echo__post_note', ['linear']), false);
 assert.equal(gateway.accountWrite('mcp__characterbot__remember'), false);
+
+// rename: a v0.1.x CharacterBot folder moves to PixelBot with its paths and Claude sessions.
+{
+  const from = path.join(tmp, 'CharacterBot');
+  const to = path.join(tmp, 'PixelBot');
+  const projects = path.join(tmp, 'projects');
+  fs.mkdirSync(path.join(from, 'workspaces', 'bot_a'), { recursive: true });
+  fs.writeFileSync(path.join(from, 'state.json'), JSON.stringify({ dir: path.join(from, 'workspaces', 'bot_a'), other: `${from} Dev/x` }));
+  const key = (p: string) => p.replace(/[^a-zA-Z0-9]/g, '-');
+  fs.mkdirSync(path.join(projects, `${key(from)}-workspaces-bot-a`), { recursive: true });
+  assert.equal(rename.moveDataDir(from, to, projects), true);
+  assert.equal(fs.existsSync(from), false);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(to, 'state.json'), 'utf8')), { dir: path.join(to, 'workspaces', 'bot_a'), other: `${from} Dev/x` });
+  assert.deepEqual(fs.readdirSync(projects), [`${key(to)}-workspaces-bot-a`]);
+  assert.equal(rename.moveDataDir(from, to, projects), false); // only once
+  // Chromium v10 blob made with the old Keychain password decrypts; a wrong one doesn't.
+  const k = crypto.pbkdf2Sync('old-pass', 'saltysalt', 1003, 16, 'sha1');
+  const c = crypto.createCipheriv('aes-128-cbc', k, Buffer.alloc(16, ' '));
+  const blob = Buffer.concat([Buffer.from('v10'), c.update('{"A":"1"}'), c.final()]);
+  assert.equal(rename.decryptLegacy(blob, 'old-pass'), '{"A":"1"}');
+  assert.equal(rename.decryptLegacy(blob, 'wrong'), null);
+}
+
+// Pixel avatars render for every shape and size.
+(globalThis as unknown as { document: unknown }).document = { addEventListener() {} };
+// require, not import: ui.ts touches document when it loads.
+const ui = require('../src/renderer/ui') as typeof import('../src/renderer/ui');
+for (let i = 0; i < ui.SHAPE_COUNT; i++) for (const size of [18, 40, 96]) {
+  const svg = ui.avatarSvg(i, '#2f7cf6', size);
+  assert.ok(svg.includes('crispEdges') && (svg.match(/class="eye"/g) || []).length === 2, `shape ${i}`);
+}
+assert.ok(!ui.avatarSvg(0, '#999', 40, { sleeping: true }).includes('class="eye"'));
 
 console.log('ok');

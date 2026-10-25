@@ -325,7 +325,7 @@ const VIEWS: Record<Tab, () => Child[]> = {
       h('h3', {}, '내 컴퓨터'),
       h('div', { class: 'group' },
         row('이 컴퓨터에서 실행', select(S.settings.computerAccess, [['allow', '항상 허용'], ['ask', '먼저 묻기'], ['deny', '허용 안 함']], (v) => set({ computerAccess: v })),
-          'CharacterBot이 내 컴퓨터에서 파일을 열고 작업을 실행하도록 해요. 자동 검토는 여전히 먼저 확인해요.'),
+          'PixelBot이 내 컴퓨터에서 파일을 열고 작업을 실행하도록 해요. 자동 검토는 여전히 먼저 확인해요.'),
         row('내 계정 앱에 쓰기 차단', toggle(S.settings.blockAccountWrites !== false, (v) => set({ blockAccountWrites: v })),
           'Slack, Gmail, 캘린더처럼 내 계정과 연동된 앱에는 읽기만 해요. 보내기·만들기·삭제는 승인 카드 없이 항상 막아요.')),
       ...secretsSection(),
@@ -373,7 +373,7 @@ const VIEWS: Record<Tab, () => Child[]> = {
     const status = latestSdk === null ? null : latestSdk === host?.sdk ? '최신 버전이에요' : `${latestSdk} 사용 가능 · npm update @anthropic-ai/claude-agent-sdk`;
     return [
       h('div', { class: 'group', style: 'margin-top:18px' },
-        row('CharacterBot', h('span', { class: 'muted' }, host?.version || '')),
+        row('PixelBot', h('span', { class: 'muted' }, host?.version || '')),
         row('Claude Agent SDK', h('button', { class: 'btn soft', onclick: async () => { latestSdk = (await act('checkUpdates')) ?? null; draw(true); } }, '업데이트 확인'), `${host?.sdk || ''}${status ? ` · ${status}` : ''}`),
         row('Electron', h('span', { class: 'muted' }, host?.electron || ''))),
     ];

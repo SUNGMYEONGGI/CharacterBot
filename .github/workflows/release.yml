@@ -1,7 +1,8 @@
 name: Release
 
 # Every push to main that touches the app becomes a new release. The version is
-# package.json's major.minor plus this workflow's run number, so nobody has to bump it.
+# package.json's major.minor plus the number of releases already made for it
+# (v0.2.0, v0.2.1, ...), so only a new minor needs a bump in package.json.
 on:
   push:
     branches: [main]
@@ -36,9 +37,12 @@ jobs:
         id: version
         run: |
           base=$(node -p "require('./package.json').version.split('.').slice(0, 2).join('.')")
-          version="$base.${{ github.run_number }}"
-          npm version "$version" --no-git-tag-version
+          n=$(gh release list --limit 1000 --json tagName -q "[.[] | select(.tagName | startswith(\"v$base.\"))] | length")
+          version="$base.$n"
+          npm version "$version" --no-git-tag-version --allow-same-version
           echo "version=$version" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build
         run: |
           # Unset secrets that aren't configured: electron-builder reads an empty
@@ -57,7 +61,7 @@ jobs:
       - name: Publish release
         run: |
           gh release create "v${{ steps.version.outputs.version }}" \
-            dist/CharacterBot-arm64.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml \
-            --target "$GITHUB_SHA" --title "CharacterBot ${{ steps.version.outputs.version }}" --generate-notes --latest
+            dist/PixelBot-arm64.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml \
+            --target "$GITHUB_SHA" --title "PixelBot ${{ steps.version.outputs.version }}" --generate-notes --latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
