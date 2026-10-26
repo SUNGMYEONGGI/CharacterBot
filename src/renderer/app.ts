@@ -453,7 +453,7 @@ function messageItems(c: Conv, list: Message[], opts: { inThread?: boolean; sinc
     if (m.role === 'user') {
       lastSender = 'user';
       const skill = m.skillId && S.skills.find((s) => s.id === m.skillId);
-      if (m.routineId) { items.push(h('div', { class: 'routine-tag' }, icon('clock', 14), m.content.replace(/^⏰ 루틴: /, '루틴 · '))); continue; }
+      if (m.routineId) { items.push(h('div', { class: `routine-tag${ui.flashId === m.id ? ' found' : ''}`, 'data-mid': m.id }, icon('clock', 14), m.content.replace(/^⏰ 루틴: /, '루틴 · '))); continue; }
       if (m.attachments?.length) items.push(h('div', { class: 'attach-row' }, m.attachments.map((a) => (a.dataUrl ? h('img', { class: 'thumb', src: a.dataUrl, title: '이미지 전체 화면으로 열기' }) : h('span', { class: 'chip' }, icon('file', 14), a.name)))));
       if (skill) items.push(h('div', { class: 'attach-row' }, h('span', { class: 'chip' }, icon('sparkle', 14), skill.name)));
       items.push(withExtras(c, m, m.voice ? voiceBubble({ ...m, voice: m.voice }) : h('div', { class: 'msg user' }, m.content), 'user', opts));
@@ -1458,6 +1458,13 @@ function travel(dir: number) {
 // The chat re-renders when it is marked read, so the highlight lives in ui.
 function jumpTo(convId: string, m: Message) {
   ui.flashId = m.id;
+  // A message a Bot relayed sits in a folded bundle keyed by the run's first message.
+  if (m.viaBotId) {
+    const list = (S.convs.find((x) => x.id === convId)?.messages || []).filter((x) => x.threadOf === m.threadOf);
+    let i = list.findIndex((x) => x.id === m.id);
+    while (i > 0 && list[i - 1].viaBotId === m.viaBotId) i--;
+    if (i >= 0) ui.bundles.add(list[i].id);
+  }
   select(convId);
   if (m.threadOf) openThread(m.threadOf);
   setTimeout(() => document.querySelector(`[data-mid="${m.id}"]`)?.scrollIntoView({ block: 'center' }), 100);

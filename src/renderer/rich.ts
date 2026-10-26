@@ -111,8 +111,9 @@ export interface ViewerFile {
 }
 
 const grid = ([head = [], ...all]: string[][]): HTMLElement => {
+  // ponytail: first 2000 rows x 200 columns; page the table if people need bigger sheets.
   const rows = all.slice(0, 2000);
-  const width = Math.max(head.length, ...rows.map((r) => r.length));
+  const width = Math.min(200, Math.max(head.length, ...rows.map((r) => r.length)));
   const pad = (r: string[]) => Array.from({ length: width }, (_, i) => r[i] ?? '');
   return h('div', { class: 'viewer-table' }, h('table', {},
     h('thead', {}, h('tr', {}, pad(head).map((c) => h('th', {}, c)))),

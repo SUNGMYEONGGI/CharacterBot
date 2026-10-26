@@ -227,7 +227,8 @@ assert.equal(gateway.sensitive({ name: 'mcp__echo__get', args: { q: '.ssh/' } })
 }
 
 // xlsx: shared and inline strings, gaps in rows and columns, sheet order, a real file through unzip.
-{
+// Async (unzip runs as a child process); "ok" waits for it.
+const xlsxDone = (async () => {
   const strings = xlsx.sharedStrings('<sst><si><t>이름</t></si><si><r><t>A&amp;</t></r><r><t xml:space="preserve">B</t></r></si></sst>');
   assert.deepEqual(strings, ['이름', 'A&B']);
   const sheet = '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="s"><v>1</v></c></row>'
@@ -246,9 +247,14 @@ assert.equal(gateway.sensitive({ name: 'mcp__echo__get', args: { q: '.ssh/' } })
   fs.writeFileSync(path.join(dir, 'xl/worksheets/sheet1.xml'), sheet);
   fs.writeFileSync(path.join(dir, 'xl/worksheets/sheet2.xml'), '<worksheet><sheetData/></worksheet>');
   execFileSync('/usr/bin/zip', ['-qr', path.join(tmp, 'book.xlsx'), 'xl'], { cwd: dir });
-  assert.deepEqual(xlsx.readXlsx(path.join(tmp, 'book.xlsx')), [{ name: '두번째', rows: [] }, { name: 'Q&A', rows: [['이름', '', 'A&B'], [], ['', '3.5', '<x>', 'TRUE']] }]);
-  assert.deepEqual(xlsx.readXlsx(path.join(tmp, 'missing.xlsx')), []);
-}
+  assert.deepEqual(await xlsx.readXlsx(path.join(tmp, 'book.xlsx')), [{ name: '두번째', rows: [] }, { name: 'Q&A', rows: [['이름', '', 'A&B'], [], ['', '3.5', '<x>', 'TRUE']] }]);
+  assert.deepEqual(await xlsx.readXlsx(path.join(tmp, 'missing.xlsx')), []);
+  // Namespace prefixes and "../" relationship targets.
+  assert.deepEqual(xlsx.sharedStrings('<x:sst><x:si><x:t>a</x:t></x:si></x:sst>'), ['a']);
+  assert.deepEqual(xlsx.sheetRows('<x:sheetData><x:row r="1"><x:c r="B1"><x:v>7</x:v></x:c></x:row></x:sheetData>', []), [['', '7']]);
+  assert.deepEqual(xlsx.sheetParts('<x:sheets><x:sheet name="S" r:id="r1"/></x:sheets>', '<Relationship Id="r1" Target="../xl/worksheets/s.xml"/>'), [{ name: 'S', part: 'xl/worksheets/s.xml' }]);
+  assert.deepEqual(xlsx.sheetParts('<sheet name="S" r:id="r1"/>', '<Relationship Id="r1" Target="../../etc/x.xml"/>'), []);
+})();
 
 // Pixel avatars render for every shape and size.
 (globalThis as unknown as { document: unknown }).document = { addEventListener() {} };
@@ -260,4 +266,4 @@ for (let i = 0; i < ui.SHAPE_COUNT; i++) for (const size of [18, 40, 96]) {
 }
 assert.ok(!ui.avatarSvg(0, '#999', 40, { sleeping: true }).includes('class="eye"'));
 
-console.log('ok');
+xlsxDone.then(() => console.log('ok'));

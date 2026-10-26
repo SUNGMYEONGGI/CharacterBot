@@ -1524,7 +1524,7 @@ const actions = {
     return tools.listFiles(workspace(botId));
   },
   // In-app viewer: what the library shows when a file is clicked.
-  readFile(botId: string, rel: string): { kind: string; name: string; dataUrl?: string; url?: string; ext?: string; text?: string; sheets?: Sheet[] } {
+  async readFile(botId: string, rel: string): Promise<{ kind: string; name: string; dataUrl?: string; url?: string; ext?: string; text?: string; sheets?: Sheet[] }> {
     const full = tools.inside(workspace(botId), rel);
     const ext = path.extname(full).toLowerCase();
     const { size } = fs.statSync(full);
@@ -1534,7 +1534,7 @@ const actions = {
     }
     if (ext === '.html' || ext === '.htm') return { kind: 'html', name, url: pathToFileURL(full).href };
     if (ext === '.pdf') return { kind: 'pdf', name, url: pathToFileURL(full).href };
-    if (ext === '.xlsx' && size < 50 * 1024 * 1024) return { kind: 'sheets', name, sheets: readXlsx(full) };
+    if (ext === '.xlsx' && size < 50 * 1024 * 1024) return { kind: 'sheets', name, sheets: await readXlsx(full) };
     if (size > 2 * 1024 * 1024) return { kind: 'other', name };
     const buf = fs.readFileSync(full);
     if (buf.includes(0)) return { kind: 'other', name };

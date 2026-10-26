@@ -72,7 +72,7 @@ const row = (label: string, control: Child, desc: string | null = null) => h('di
 function micSelect(): HTMLElement {
   const el = select(S.settings.micId, [['', '시스템 기본값']], (v) => set({ micId: v }));
   navigator.mediaDevices?.enumerateDevices().then((all) => {
-    const mics = all.filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications');
+    const mics = all.filter((d) => d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications');
     const known = mics.some((d) => d.deviceId === S.settings.micId);
     fill(el, ...[['', '시스템 기본값'], ...mics.map((d, i) => [d.deviceId, d.label || `마이크 ${i + 1}`]),
       ...(S.settings.micId && !known ? [[S.settings.micId, '연결되지 않은 마이크 (기본값 사용 중)']] : [])]

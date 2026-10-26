@@ -610,4 +610,4 @@ button.team-line:hover { background: var(--soft); }
 .goal .task.done span:first-of-type { color: var(--muted); text-decoration: line-through; }
 
 /* ⌘K: the message a search result jumped to */
-.msg-wrap.found .msg { box-shadow: 0 0 0 2px var(--accent); transition: box-shadow .3s; }
+.msg-wrap.found .msg, .routine-tag.found { box-shadow: 0 0 0 2px var(--accent); transition: box-shadow .3s; }
