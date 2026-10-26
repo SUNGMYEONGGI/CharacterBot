@@ -29,6 +29,7 @@ import type { Secrets } from './mcp';
 import type { OauthClient, OauthRecord } from './oauth';
 import type { ScheduleInput } from './routines';
 import type { ToolCtx } from './tools';
+import { readXlsx, type Sheet } from './xlsx';
 import type { Prompt } from './transcript';
 
 // The app's own entries in secrets.bin sit beside the user's ${NAME} secrets.
@@ -336,7 +337,7 @@ function systemPrompt(bot: Bot, conv: Conv): string {
     if (folders.length) parts.push(`다른 멤버의 작업 폴더(읽기 가능, 파일을 주고받을 때 경로를 알려 주세요):\n${folders.join('\n')}`);
   }
   parts.push('일을 시작하거나 새 단계로 넘어갈 때마다 mcp__characterbot__set_status로 지금 하는 일을 "학회 정보 / 검색 중"처럼 짧게 알리세요. 먼저 무엇을 할지 한두 문장으로 말한 뒤 작업하세요. 최신 정보가 필요하면 웹 검색을 쓰세요.');
-  parts.push('현재 작업 폴더가 당신의 컴퓨터입니다. 만든 파일은 이 폴더에 저장하면 사용자의 라이브러리에 표시됩니다. 사용자에게 결정을 물을 때는 mcp__characterbot__ask_user를, 오래 기억할 사실은 mcp__characterbot__remember를, 반복 작업 요청은 mcp__characterbot__schedule_routine을 쓰세요. 다른 Bot에게 일을 맡기거나 물어볼 때는 mcp__characterbot__message_bot을, 사용자가 Bot이나 팀을 만들어 달라고 하면 mcp__characterbot__create_bot·create_team으로 직접 만들고(모델을 골라야 하면 list_models, 기존 Bot의 모델·지침 변경은 update_bot), 팀 전체에 일을 맡길 때는 mcp__characterbot__message_team을, 사용자가 요청하지 않은 회의 초대를 발견하면 mcp__characterbot__request_meeting_approval을 쓰세요.');
+  parts.push('현재 작업 폴더가 당신의 컴퓨터입니다. 만든 파일은 이 폴더에 저장하면 사용자의 라이브러리에 표시됩니다. 사용자에게 결정을 물을 때는 mcp__characterbot__ask_user를, 오래 기억할 사실은 mcp__characterbot__remember를, 반복 작업 요청은 mcp__characterbot__schedule_routine을 쓰세요. 다른 Bot에게 일을 맡기거나 물어볼 때는 mcp__characterbot__message_bot을, 사용자가 Bot이나 팀을 만들어 달라고 하면 mcp__characterbot__create_bot·create_team으로 직접 만들고(모델을 골라야 하면 list_models, 기존 Bot의 모델·지침 변경은 update_bot), 팀 전체에 일을 맡길 때는 mcp__characterbot__message_team을, 사용자가 요청하지 않은 회의 초대를 발견하면 mcp__characterbot__request_meeting_approval을 쓰세요. 여러 단계로 된 일은 mcp__characterbot__track_tasks로 목표와 작업 목록을 보여 주고, 지난 대화 내용이 필요하면 mcp__characterbot__search_conversations로 찾으세요.');
   const team = state.bots.filter((b) => b.id !== bot.id);
   if (bot.id === mainBot()?.id && team.length) {
     const role = (b: Bot) => (b.label || b.systemPrompt.split('\n')[0]).slice(0, 160);
@@ -344,6 +345,7 @@ function systemPrompt(bot: Bot, conv: Conv): string {
   }
   if (state.settings.blockAccountWrites !== false) parts.push('사용자 계정과 연동된 앱(Slack, Gmail, 캘린더, Notion 등)은 읽기만 하세요. 메시지·메일 발송, 일정 생성·응답, 페이지 작성 같은 쓰기는 막혀 있으니 시도하지 말고, 보낼 내용은 채팅에 초안으로 보여주세요.');
   parts.push('답에서 다이어그램은 ```mermaid 코드 블록으로, 수식은 $...$ / $$...$$ (KaTeX)로 쓰면 채팅에 그려집니다. D3·Three.js 같은 인터랙티브 시각화는 단일 HTML 파일로 작업 폴더에 저장하면 라이브러리에서 바로 열립니다.');
+  if (conv.tasks) parts.push(`이 대화의 작업 목록 (mcp__characterbot__track_tasks로 갱신, 사용자가 직접 체크했을 수 있어요):\n목표: ${conv.tasks.goal}\n${conv.tasks.items.map((t) => `- [${t.status}] ${t.text}`).join('\n')}`);
   const skills = state.skills.filter((s) => bot.skillIds.includes(s.id) && !s.disabled);
   if (skills.length) parts.push(`사용 가능한 스킬 (use_skill로 전체 지침을 불러오세요):\n${skills.map((s) => `- ${s.name}: ${s.description}`).join('\n')}`);
   if (bot.memories.length) parts.push(`기억하고 있는 사실:\n${bot.memories.map((m) => `- [${m.id}] ${m.text}`).join('\n')}`);
@@ -522,6 +524,10 @@ async function botTurn(conv: Conv, bot: Bot, initiator: Initiator, signal: Abort
     setStatus: (subject, verb) => {
       const a = runtime.active[conv.id];
       if (a?.botId === bot.id) { a.status = { subject: subject.slice(0, 40), verb: verb.slice(0, 20) }; broadcast(); }
+    },
+    setTasks: (goal, items) => {
+      conv.tasks = items.length ? { goal: goal.slice(0, 200), items: items.map((t) => ({ text: t.text.slice(0, 200), status: t.status })) } : null;
+      broadcast();
     },
   };
 
@@ -1109,6 +1115,14 @@ const actions = {
     const list = msg.reactions || [];
     msg.reactions = list.includes(emoji) ? list.filter((e) => e !== emoji) : [...list, emoji];
   },
+  // The task list above the composer: the user ticks items or clears it.
+  setTaskStatus(convId: string, index: number, status: 'todo' | 'done') {
+    const item = findConv(convId).tasks?.items[index];
+    if (item && (status === 'todo' || status === 'done')) item.status = status;
+  },
+  clearTasks(convId: string) {
+    findConv(convId).tasks = null;
+  },
   micAccess(): boolean | Promise<boolean> {
     return process.platform === 'darwin' ? systemPreferences.askForMediaAccess('microphone') : true;
   },
@@ -1184,7 +1198,7 @@ const actions = {
     Object.assign(findConv(id), rest);
   },
   clearConv(id: string) {
-    Object.assign(findConv(id), { messages: [], sessions: {}, summary: null });
+    Object.assign(findConv(id), { messages: [], sessions: {}, summary: null, tasks: null });
   },
   // Every bot starts a fresh session next turn, primed with the summary.
   compactConv(id: string) {
@@ -1510,7 +1524,7 @@ const actions = {
     return tools.listFiles(workspace(botId));
   },
   // In-app viewer: what the library shows when a file is clicked.
-  readFile(botId: string, rel: string): { kind: string; name: string; dataUrl?: string; url?: string; ext?: string; text?: string } {
+  async readFile(botId: string, rel: string): Promise<{ kind: string; name: string; dataUrl?: string; url?: string; ext?: string; text?: string; sheets?: Sheet[] }> {
     const full = tools.inside(workspace(botId), rel);
     const ext = path.extname(full).toLowerCase();
     const { size } = fs.statSync(full);
@@ -1519,6 +1533,8 @@ const actions = {
       return { kind: 'image', name, dataUrl: `data:${IMAGE_TYPES[ext] || 'image/svg+xml'};base64,${fs.readFileSync(full).toString('base64')}` };
     }
     if (ext === '.html' || ext === '.htm') return { kind: 'html', name, url: pathToFileURL(full).href };
+    if (ext === '.pdf') return { kind: 'pdf', name, url: pathToFileURL(full).href };
+    if (ext === '.xlsx' && size < 50 * 1024 * 1024) return { kind: 'sheets', name, sheets: await readXlsx(full) };
     if (size > 2 * 1024 * 1024) return { kind: 'other', name };
     const buf = fs.readFileSync(full);
     if (buf.includes(0)) return { kind: 'other', name };
@@ -1604,7 +1620,8 @@ function createWindow() {
     title: 'PixelBot',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 18 },
-    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true },
+    // plugins: Chromium's PDF viewer, for PDFs in the library viewer.
+    webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, plugins: true },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   // Links in bot replies open in the browser, never inside the app window.

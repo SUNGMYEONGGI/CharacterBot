@@ -11,6 +11,9 @@ import { pendingPrompt, mentionedBots } from '../src/main/transcript';
 import { substitute, toSdkConfig } from '../src/main/mcp';
 import * as providers from '../src/main/providers';
 import * as rename from '../src/main/rename';
+import * as xlsx from '../src/main/xlsx';
+import { searchMessages } from '../src/shared/search';
+import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import type { McpServer, Message, Provider, Rule } from '../src/shared/types';
 
@@ -212,6 +215,47 @@ assert.equal(gateway.sensitive({ name: 'Bash', args: { command: 'npm test && git
 assert.equal(gateway.sensitive({ name: 'Write', args: { file_path: '/tmp/r.md', content: 'security findings: rotate ~/.ssh keys' } }), false);
 assert.equal(gateway.sensitive({ name: 'mcp__echo__get', args: { q: '.ssh/' } }), false);
 
+// Message search: every word, newest first, no tool entries or hidden briefs.
+{
+  const msg = (id: string, ts: number, content: string, extra: Partial<Message> = {}): Message => ({ id, ts, role: 'user', content, ...extra });
+  const a = { ...store.newConv('dm', ['b1']), messages: [msg('m1', 1, '서울 날씨 알려줘'), msg('m2', 3, '부산 날씨는 맑아요', { role: 'assistant' }), msg('t1', 4, '날씨 API 결과', { role: 'tool' })] };
+  const b = { ...store.newConv('group', ['b2'], '팀'), messages: [msg('m3', 2, 'Weather in Seoul'), msg('m4', 5, '날씨 브리핑', { brief: true })] };
+  assert.deepEqual(searchMessages([a, b], '날씨').map((x) => x.msg.id), ['m2', 'm1']);
+  assert.deepEqual(searchMessages([a, b], 'seoul WEATHER').map((x) => x.msg.id), ['m3']);
+  assert.deepEqual(searchMessages([a, b], '  '), []);
+  assert.ok(searchMessages([{ ...a, messages: [msg('long', 1, `${'가'.repeat(100)} 목표 ${'나'.repeat(200)}`)] }], '목표')[0].snippet.startsWith('…'));
+}
+
+// xlsx: shared and inline strings, gaps in rows and columns, sheet order, a real file through unzip.
+// Async (unzip runs as a child process); "ok" waits for it.
+const xlsxDone = (async () => {
+  const strings = xlsx.sharedStrings('<sst><si><t>이름</t></si><si><r><t>A&amp;</t></r><r><t xml:space="preserve">B</t></r></si></sst>');
+  assert.deepEqual(strings, ['이름', 'A&B']);
+  const sheet = '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="s"><v>1</v></c></row>'
+    + '<row r="3"><c r="B3"><v>3.5</v></c><c r="C3" t="inlineStr"><is><t>&lt;x&gt;</t></is></c><c r="D3" t="b"><v>1</v></c></row></sheetData></worksheet>';
+  assert.deepEqual(xlsx.sheetRows(sheet, strings), [['이름', '', 'A&B'], [], ['', '3.5', '<x>', 'TRUE']]);
+  assert.equal(xlsx.sheetRows(sheet, strings, 1).length, 1);
+  const workbook = '<workbook><sheets><sheet name="두번째" sheetId="2" r:id="rId2"/><sheet name="Q&amp;A" sheetId="1" r:id="rId1"/></sheets></workbook>';
+  const rels = '<Relationships><Relationship Id="rId1" Type="x" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="x" Target="/xl/worksheets/sheet2.xml"/></Relationships>';
+  assert.deepEqual(xlsx.sheetParts(workbook, rels), [{ name: '두번째', part: 'xl/worksheets/sheet2.xml' }, { name: 'Q&A', part: 'xl/worksheets/sheet1.xml' }]);
+  const dir = fs.mkdtempSync(path.join(tmp, 'xlsx-'));
+  fs.mkdirSync(path.join(dir, 'xl/_rels'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'xl/worksheets'));
+  fs.writeFileSync(path.join(dir, 'xl/workbook.xml'), workbook);
+  fs.writeFileSync(path.join(dir, 'xl/_rels/workbook.xml.rels'), rels);
+  fs.writeFileSync(path.join(dir, 'xl/sharedStrings.xml'), '<sst><si><t>이름</t></si><si><t>A&amp;B</t></si></sst>');
+  fs.writeFileSync(path.join(dir, 'xl/worksheets/sheet1.xml'), sheet);
+  fs.writeFileSync(path.join(dir, 'xl/worksheets/sheet2.xml'), '<worksheet><sheetData/></worksheet>');
+  execFileSync('/usr/bin/zip', ['-qr', path.join(tmp, 'book.xlsx'), 'xl'], { cwd: dir });
+  assert.deepEqual(await xlsx.readXlsx(path.join(tmp, 'book.xlsx')), [{ name: '두번째', rows: [] }, { name: 'Q&A', rows: [['이름', '', 'A&B'], [], ['', '3.5', '<x>', 'TRUE']] }]);
+  assert.deepEqual(await xlsx.readXlsx(path.join(tmp, 'missing.xlsx')), []);
+  // Namespace prefixes and "../" relationship targets.
+  assert.deepEqual(xlsx.sharedStrings('<x:sst><x:si><x:t>a</x:t></x:si></x:sst>'), ['a']);
+  assert.deepEqual(xlsx.sheetRows('<x:sheetData><x:row r="1"><x:c r="B1"><x:v>7</x:v></x:c></x:row></x:sheetData>', []), [['', '7']]);
+  assert.deepEqual(xlsx.sheetParts('<x:sheets><x:sheet name="S" r:id="r1"/></x:sheets>', '<Relationship Id="r1" Target="../xl/worksheets/s.xml"/>'), [{ name: 'S', part: 'xl/worksheets/s.xml' }]);
+  assert.deepEqual(xlsx.sheetParts('<sheet name="S" r:id="r1"/>', '<Relationship Id="r1" Target="../../etc/x.xml"/>'), []);
+})();
+
 // Pixel avatars render for every shape and size.
 (globalThis as unknown as { document: unknown }).document = { addEventListener() {} };
 // require, not import: ui.ts touches document when it loads.
@@ -222,4 +266,4 @@ for (let i = 0; i < ui.SHAPE_COUNT; i++) for (const size of [18, 40, 96]) {
 }
 assert.ok(!ui.avatarSvg(0, '#999', 40, { sleeping: true }).includes('class="eye"'));
 
-console.log('ok');
+xlsxDone.then(() => console.log('ok'));

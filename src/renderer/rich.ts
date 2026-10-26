@@ -97,7 +97,7 @@ export function parseCsv(text: string, sep: string): string[][] {
   return rows;
 }
 
-// file: { kind: image|svg|markdown|table|text|html|other, name, dataUrl?, svg?, text?, ext?, url? }
+// file: { kind: image|svg|markdown|table|sheets|pdf|text|html|other, name, dataUrl?, svg?, text?, ext?, url?, sheets? }
 // openExternal: opens it in the default app (shown when given).
 export interface ViewerFile {
   kind: string;
@@ -107,6 +107,28 @@ export interface ViewerFile {
   text?: string;
   ext?: string;
   url?: string;
+  sheets?: { name: string; rows: string[][] }[];
+}
+
+const grid = ([head = [], ...all]: string[][]): HTMLElement => {
+  // ponytail: first 2000 rows x 200 columns; page the table if people need bigger sheets.
+  const rows = all.slice(0, 2000);
+  const width = Math.min(200, Math.max(head.length, ...rows.map((r) => r.length)));
+  const pad = (r: string[]) => Array.from({ length: width }, (_, i) => r[i] ?? '');
+  return h('div', { class: 'viewer-table' }, h('table', {},
+    h('thead', {}, h('tr', {}, pad(head).map((c) => h('th', {}, c)))),
+    h('tbody', {}, rows.map((r) => h('tr', {}, pad(r).map((c) => h('td', {}, c)))))));
+};
+
+// One tab per worksheet.
+function sheetsView(sheets: NonNullable<ViewerFile['sheets']>): HTMLElement {
+  if (!sheets.length) return h('div', { class: 'viewer-none muted' }, icon('file', 34), '시트를 읽지 못했어요');
+  const view = h('div', { class: 'viewer-sheets' });
+  const show = (i: number): void => void fill(view,
+    sheets.length > 1 ? h('div', { class: 'sheet-tabs row' }, sheets.map((sh, j) => h('button', { class: `btn ${j === i ? 'soft' : 'ghost'}`, onclick: () => show(j) }, sh.name))) : null,
+    grid(sheets[i].rows));
+  show(0);
+  return view;
 }
 
 export function openViewer(file: ViewerFile, openExternal: (() => void) | null = null): void {
@@ -115,12 +137,10 @@ export function openViewer(file: ViewerFile, openExternal: (() => void) | null =
   else if (file.kind === 'svg') body = h('div', { class: 'viewer-svg', html: file.svg });
   else if (file.kind === 'markdown') body = h('div', { class: 'viewer-doc msg bot', html: md(file.text) });
   else if (file.kind === 'html') body = h('iframe', { class: 'viewer-frame', sandbox: 'allow-scripts', src: file.url });
-  else if (file.kind === 'table') {
-    const [head = [], ...rows] = parseCsv(file.text || '', file.ext === '.tsv' ? '\t' : ',');
-    body = h('div', { class: 'viewer-table' }, h('table', {},
-      h('thead', {}, h('tr', {}, head.map((c) => h('th', {}, c)))),
-      h('tbody', {}, rows.slice(0, 2000).map((r) => h('tr', {}, r.map((c) => h('td', {}, c)))))));
-  } else if (file.kind === 'text') body = h('pre', { class: 'viewer-text' }, file.text);
+  else if (file.kind === 'pdf') body = h('iframe', { class: 'viewer-frame', src: file.url }); // no sandbox: it would block the PDF viewer
+  else if (file.kind === 'table') body = grid(parseCsv(file.text || '', file.ext === '.tsv' ? '\t' : ','));
+  else if (file.kind === 'sheets') body = sheetsView(file.sheets || []);
+  else if (file.kind === 'text') body = h('pre', { class: 'viewer-text' }, file.text);
   else body = h('div', { class: 'viewer-none muted' }, icon('file', 34), '이 파일은 여기서 미리 볼 수 없어요');
   if (body.classList.contains('viewer-doc')) renderDiagrams(body);
   openModal(h('div', { class: 'modal viewer' },

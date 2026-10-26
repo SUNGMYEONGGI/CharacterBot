@@ -493,6 +493,8 @@ a.btn { color: var(--base); text-decoration: none; }
 .viewer-table table { border-collapse: collapse; font-size: 13px; }
 .viewer-table th { position: sticky; top: 0; background: var(--soft); font-weight: 600; }
 .viewer-table th, .viewer-table td { border: 1px solid var(--stroke); padding: 5px 10px; text-align: left; white-space: nowrap; }
+.viewer-sheets { align-self: flex-start; }
+.sheet-tabs { gap: 4px; padding: 12px 16px 0; flex-wrap: wrap; }
 .viewer-none { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 
 /* usage: one compact card per subscription */
@@ -595,3 +597,17 @@ button.team-line:hover { background: var(--soft); }
 .activity-row .verb { color: var(--faint); background: linear-gradient(90deg, var(--faint) 40%, var(--base) 50%, var(--faint) 60%) 0 0 / 300% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: verb-shine 2s linear infinite; }
 @keyframes verb-shine { from { background-position: 100% 0; } to { background-position: 0 0; } }
 @media (prefers-reduced-motion: reduce) { .activity-row .verb { animation: none; -webkit-text-fill-color: currentColor; } }
+
+/* track_tasks: goal and checklist above the composer */
+.goal:empty { display: none; }
+.goal { margin: 0 0 8px; border: 1px solid var(--stroke); border-radius: 12px; background: var(--pane); font-size: 13px; }
+.goal-head { gap: 4px; padding: 6px 8px 6px 4px; }
+.goal-toggle { gap: 6px; padding: 2px 6px; text-align: left; font-weight: 500; }
+.goal .chev { display: inline-flex; transition: transform .15s; }
+.goal .chev.open { transform: rotate(90deg); }
+.goal-list { padding: 2px 12px 10px 30px; display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow: auto; }
+.goal .task { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.goal .task.done span:first-of-type { color: var(--muted); text-decoration: line-through; }
+
+/* ⌘K: the message a search result jumped to */
+.msg-wrap.found .msg, .routine-tag.found { box-shadow: 0 0 0 2px var(--accent); transition: box-shadow .3s; }

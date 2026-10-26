@@ -121,7 +121,7 @@ The app picks up your Claude Code login on first launch. If it does not, open �
 
 | Keys | Action |
 | --- | --- |
-| `⌘K` | Go to / run a command |
+| `⌘K` | Go to a chat, run a command, or search past messages |
 | `⌘N` | New Bot |
 | `⌘,` | Settings |
 | `⇧⌘M` | Connect apps |
@@ -149,8 +149,10 @@ The app picks up your Claude Code login on first launch. If it does not, open �
 
   Events that arrive while the chat is busy, or within 60 seconds of the last run, queue (up to 5) instead of being dropped.
 - **Cards instead of guesses**: `ask_user` shows a choice card and the Bot waits. A draft to an outside app arrives as an editable approval card, and what you edit is what is sent.
-- **Voice, on the device**: voice memos and turn-based voice chat use macOS Speech through a small Swift helper compiled on first use. Nothing leaves the machine for transcription. Voice chat replies are spoken with the system voice.
-- **Rich answers**: Markdown, Mermaid diagrams, KaTeX math, CSV as tables, HTML files previewed in-app, generated images inline.
+- **Voice, on the device**: voice memos and turn-based voice chat use macOS Speech through a small Swift helper compiled on first use. Nothing leaves the machine for transcription. Voice chat replies are spoken with the system voice. Pick the microphone in 설정 › 일반; an unplugged one falls back to the system default.
+- **Rich answers**: Markdown, Mermaid diagrams, KaTeX math, CSV as tables, HTML files previewed in-app, generated images inline. The library also previews PDFs (Chromium's viewer) and `.xlsx` workbooks, one tab per sheet (values only, read with macOS `unzip`).
+- **Search past messages**: type two or more characters in `⌘K` to find messages in every chat and thread; picking one opens the chat and highlights it. Bots search the chats they are in with `search_conversations`.
+- **Goals and task lists**: for multi-step work a Bot shows a goal and a checklist above the composer with `track_tasks`. Tick items yourself or clear the list; the Bot sees the current list every turn.
 - **Skills**: instructions a Bot loads by name with `use_skill`. A Bot can propose one with `propose_skill`, and it is saved only when you press the button on the card.
 - **Apps over MCP**: remote (URL, OAuth) and local (stdio) MCP servers, a catalog of 51, `mcp.json` import, and per-Bot grants. Google apps take a Google OAuth client you register once.
 - **Notifications**: a system notification and a Dock badge for every approval or question waiting on you.
@@ -175,6 +177,8 @@ The tools every Bot gets from the app, on top of the file, shell and web tools o
 | `create_team` / `add_to_team` | Creates a team chat with the given Bots, or adds members. |
 | `message_team` | Posts to a team chat and returns the members' replies. |
 | `request_meeting_approval` | Asks whether to accept a meeting invite you did not request; your answer grants one calendar reply. |
+| `search_conversations` | Finds messages in the chats this Bot is in (all words, newest first). |
+| `track_tasks` | Shows this chat's goal and checklist above the composer; each call replaces the list. |
 
 ## Security model
 

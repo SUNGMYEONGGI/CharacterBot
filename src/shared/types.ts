@@ -99,6 +99,11 @@ export interface Session {
   engine?: 'claude' | 'codex';
 }
 
+export interface Task {
+  text: string;
+  status: 'todo' | 'doing' | 'done';
+}
+
 export interface Conv {
   id: string;
   kind: 'dm' | 'group';
@@ -112,6 +117,7 @@ export interface Conv {
   pinned?: boolean;
   unread?: boolean;
   hidden?: boolean;
+  tasks?: { goal: string; items: Task[] } | null; // track_tasks: the chat's goal and its checklist
 }
 
 export interface Section {
@@ -231,6 +237,7 @@ export interface Settings {
   computerAccess: Effect;
   fullAccess: boolean;
   blockAccountWrites: boolean;
+  micId: string; // '' = the system default microphone
   onboarded: boolean; // first-run setup (accounts, name, team) finished
   mainBotId?: string;
 }
