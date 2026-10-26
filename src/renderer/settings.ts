@@ -67,6 +67,20 @@ function draw(force: boolean): void {
 }
 
 const row = (label: string, control: Child, desc: string | null = null) => h('div', { class: 'srow' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, label), desc ? h('div', { class: 'desc' }, desc) : null), control);
+// Microphones, filled in after the settings page draws (device labels need
+// microphone permission; without it they show as numbers).
+function micSelect(): HTMLElement {
+  const el = select(S.settings.micId, [['', '시스템 기본값']], (v) => set({ micId: v }));
+  navigator.mediaDevices?.enumerateDevices().then((all) => {
+    const mics = all.filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications');
+    const known = mics.some((d) => d.deviceId === S.settings.micId);
+    fill(el, ...[['', '시스템 기본값'], ...mics.map((d, i) => [d.deviceId, d.label || `마이크 ${i + 1}`]),
+      ...(S.settings.micId && !known ? [[S.settings.micId, '연결되지 않은 마이크 (기본값 사용 중)']] : [])]
+      .map(([v, label]) => h('option', { value: v, selected: v === S.settings.micId ? true : null }, label)));
+  }).catch(() => {});
+  return el;
+}
+
 const select = <T extends string>(value: T, options: [T, string][], onchange: (v: T) => void) => h('select', { class: 'select', onchange: (e) => onchange(e.target.value as T) },
   options.map(([v, l]) => h('option', { value: v, selected: value === v ? true : null }, l)));
 const set = (patch: Partial<Settings>) => act('updateSettings', patch);
@@ -299,7 +313,8 @@ const VIEWS: Record<Tab, () => Child[]> = {
       h('h3', {}, '시스템'),
       h('div', { class: 'group' },
         row('하드웨어 가속 사용', toggle(S.settings.hardwareAcceleration, (v) => { set({ hardwareAcceleration: v }); toast('앱을 다시 시작하면 적용돼요'); })),
-        row('알림', toggle(S.settings.notifications, (v) => set({ notifications: v })), '앱이 뒤에 있을 때 Bot의 답장을 알림으로 받아요.')),
+        row('알림', toggle(S.settings.notifications, (v) => set({ notifications: v })), '앱이 뒤에 있을 때 Bot의 답장을 알림으로 받아요.'),
+        row('마이크', micSelect(), '음성 메모와 음성 채팅에 쓸 마이크예요.')),
 
       h('h3', {}, 'Bot'),
       h('div', { class: 'group' },

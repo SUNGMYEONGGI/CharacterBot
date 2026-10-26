@@ -7,6 +7,7 @@ import {
   toggle, popover, relativeDay, shapeOf, SHAPE_COUNT, modelName, modelOptions, setAvatarState,
   type Child, type MenuItem,
 } from './ui';
+import { searchMessages } from '../shared/search';
 import { md, renderDiagrams, openViewer, voiceBubble, toWav16k, blobToDataUrl, clock, parseCsv } from './rich';
 import { initOnboarding, renderOnboarding } from './onboarding';
 
@@ -24,6 +25,8 @@ const ui: {
   suggest?: { list: Suggestion[]; index: number; el: HTMLTextAreaElement } | null;
   threadEls?: { rootId: string; ta: HTMLTextAreaElement; list: HTMLElement; view?: HTMLElement } | null;
   voiceBusy?: boolean;
+  tasksOpen?: boolean;
+  flashId?: string | null; // a ⌘K result, highlighted for a moment
   tasksBody?: HTMLElement | null;
 } = { convId: null, tab: 'details', attachments: [], skillId: null, panelOpen: true, history: { list: [], index: -1 }, threadId: null, bundles: new Set() };
 
@@ -370,7 +373,7 @@ function withExtras(c: Conv, m: Message, bubble: HTMLElement, side: 'bot' | 'use
   const repliers = [...new Set(replies.filter((x) => x.role === 'assistant').map((x) => x.botId))].map((id) => botById(id)).filter((b): b is Bot => Boolean(b));
   const row = replies.length ? h('button', { class: 'replies', onclick: () => openThread(m.id) },
     repliers.slice(0, 3).map((b) => avatar(b, 18)), h('b', {}, `답장 ${replies.length}개`), h('span', { class: 'muted' }, relativeDay(replies[replies.length - 1].ts))) : null;
-  return h('div', { class: `msg-wrap ${side}` }, bubble, reactions, row, bar);
+  return h('div', { class: `msg-wrap ${side}${ui.flashId === m.id ? ' found' : ''}`, 'data-mid': m.id }, bubble, reactions, row, bar);
 }
 
 function emojiPicker(anchor: Element, pick: (emoji: string) => void): void {
@@ -572,7 +575,27 @@ function renderChat() {
   ta.placeholder = c.kind === 'group' ? `${c.name}에게 메시지 보내기` : '답변을 입력하거나 다른 이야기를 하세요';
   ta.spellcheck = S.settings.spellcheck;
   renderThread();
+  renderGoal(c);
   renderComposerState();
+}
+
+// track_tasks: the chat's goal and checklist above the composer. The user can
+// tick items (the Bot sees that next turn) or clear the list.
+function renderGoal(c: Conv) {
+  const t = c.tasks;
+  const el = $('#chat .goal');
+  if (!t?.items.length) return void fill(el);
+  const done = t.items.filter((x) => x.status === 'done').length;
+  fill(el,
+    h('div', { class: 'goal-head row' },
+      h('button', { class: 'grow row goal-toggle', title: ui.tasksOpen ? '작업 목록 접기' : '작업 목록 펼치기', onclick: () => { ui.tasksOpen = !ui.tasksOpen; renderGoal(c); } },
+        h('span', { class: `chev${ui.tasksOpen ? ' open' : ''}` }, icon('chevron', 13)),
+        h('span', { class: 'grow ellipsis' }, t.goal),
+        h('span', { class: 'muted small' }, `${done}/${t.items.length}`)),
+      h('button', { class: 'x', title: '작업 목록 지우기', onclick: () => act('clearTasks', c.id) }, icon('close', 14))),
+    ui.tasksOpen ? h('div', { class: 'goal-list' }, t.items.map((x, i) => h('label', { class: `task ${x.status}` },
+      h('input', { type: 'checkbox', checked: x.status === 'done' ? true : null, onchange: (e) => act('setTaskStatus', c.id, i, (e.target as HTMLInputElement).checked ? 'done' : 'todo') }),
+      h('span', {}, x.text), x.status === 'doing' ? h('span', { class: 'muted small' }, '진행 중') : null))) : null);
 }
 
 // ---------- composer ----------
@@ -678,13 +701,25 @@ const hideSuggest = () => setTimeout(() => { document.querySelector('.suggest')?
 
 // ---------- voice memos: record, transcribe on device, send ----------
 
+// The microphone chosen in 설정 › 일반, falling back to the system default
+// when it has been unplugged.
+async function openMic(extra: MediaTrackConstraints = {}): Promise<MediaStream> {
+  const id = S.settings.micId;
+  if (id) {
+    try {
+      return await navigator.mediaDevices.getUserMedia({ audio: { ...extra, deviceId: { exact: id } } });
+    } catch {}
+  }
+  return navigator.mediaDevices.getUserMedia({ audio: Object.keys(extra).length ? extra : true });
+}
+
 let rec: { media: MediaRecorder; chunks: Blob[]; start: number; stream: MediaStream; timer: ReturnType<typeof setInterval> } | null = null;
 async function startVoice() {
   if (rec || ui.voiceBusy || vc) return;
   if (!(await act('micAccess'))) return toast('마이크 권한이 필요해요. 시스템 설정 › 개인정보 보호 및 보안 › 마이크에서 허용해 주세요');
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream = await openMic();
   } catch {
     return toast('마이크를 시작할 수 없어요');
   }
@@ -757,7 +792,7 @@ async function startVoiceChat() {
   if (!(await act('micAccess'))) return toast('마이크 권한이 필요해요. 시스템 설정 › 개인정보 보호 및 보안 › 마이크에서 허용해 주세요');
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    stream = await openMic({ echoCancellation: true, noiseSuppression: true });
   } catch {
     return toast('마이크를 시작할 수 없어요');
   }
@@ -882,6 +917,7 @@ function buildComposer() {
     h('div', { class: 'chat-top' }),
     h('div', { class: 'thread' }),
     h('div', { class: 'composer-wrap' },
+      h('div', { class: 'goal' }),
       h('div', { class: 'voice-chat' }),
       h('div', { class: 'pending-attach' }),
       h('div', { class: 'composer' }, plus, textarea,
@@ -1418,6 +1454,20 @@ function travel(dir: number) {
   select(ui.history.list[i], false);
 }
 
+// Opens the chat (and thread) holding a message and flashes it: ⌘K results.
+// The chat re-renders when it is marked read, so the highlight lives in ui.
+function jumpTo(convId: string, m: Message) {
+  ui.flashId = m.id;
+  select(convId);
+  if (m.threadOf) openThread(m.threadOf);
+  setTimeout(() => document.querySelector(`[data-mid="${m.id}"]`)?.scrollIntoView({ block: 'center' }), 100);
+  setTimeout(() => {
+    if (ui.flashId !== m.id) return;
+    ui.flashId = null;
+    document.querySelector(`[data-mid="${m.id}"]`)?.classList.remove('found');
+  }, 2000);
+}
+
 function openShortcuts() {
   openModal(dialog('키보드 단축키', SHORTCUTS.map(([k, label]) => h('div', { class: 'shortcut-row' }, label, h('span', { class: 'kbd' }, k)))));
 }
@@ -1445,11 +1495,13 @@ function openPalette() {
   let sel = 0;
   let shown: PaletteItem[] = [];
   const list = h('div', { class: 'pal-list' });
-  const field = h('input', { placeholder: '검색', oninput: () => { sel = 0; draw(); } });
+  const field = h('input', { placeholder: 'Bot, 명령, 메시지 검색', oninput: () => { sel = 0; draw(); } });
   const run = (item: PaletteItem) => { closeModal(); item.run(); };
   const draw = () => {
     const q = field.value.trim().toLowerCase();
-    shown = [...chats, ...commands].filter((it) => !q || `${it.label} ${it.sub || ''}`.toLowerCase().includes(q));
+    const found: PaletteItem[] = q.length < 2 ? [] : searchMessages(S.convs, q).map(({ conv: x, msg, snippet }) => ({
+      conv: x, label: snippet, sub: `${convTitle(x)} · ${new Date(msg.ts).toLocaleDateString('ko-KR')}`, run: () => jumpTo(x.id, msg) }));
+    shown = [...[...chats, ...commands].filter((it) => !q || `${it.label} ${it.sub || ''}`.toLowerCase().includes(q)), ...found];
     fill(list, ...shown.map((it, i) => h('button', { class: `pal-item${i === sel ? ' sel' : ''}`, onmousemove: () => { if (sel !== i) { sel = i; draw(); } }, onclick: () => run(it) },
       it.conv ? convAvatar(it.conv, 32) : h('span', { class: 'ic' }, icon(it.icon || '', 17)),
       h('div', { class: 'grow' }, h('div', { class: 'ellipsis' }, it.label), it.sub ? h('div', { class: 'sub ellipsis' }, it.sub) : null),

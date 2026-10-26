@@ -44,6 +44,7 @@ function defaultState(): State {
       computerAccess: 'allow',
       fullAccess: true,
       blockAccountWrites: true,
+      micId: '',
       onboarded: false,
     },
     bots: [bot],

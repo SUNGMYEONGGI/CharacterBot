@@ -1,7 +1,7 @@
 {
   "name": "characterbot",
   "productName": "PixelBot",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Desktop AI bot team on your own Claude and ChatGPT subscriptions",
   "author": "SUNGMYEONGGI",
   "private": true,

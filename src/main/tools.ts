@@ -9,7 +9,8 @@ import type { McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import type { Bot, Routine, State } from '../shared/types';
+import { searchMessages } from '../shared/search';
+import type { Bot, Routine, State, Task } from '../shared/types';
 import type { AgentSdk } from './agent';
 import type { ScheduleInput } from './routines';
 
@@ -90,6 +91,7 @@ export interface ToolCtx {
   addToTeam: (team: string, botNames: string[]) => string;
   messageTeam: (team: string, message: string, mention?: string[]) => Promise<string>;
   setStatus: (subject: string, verb: string) => void;
+  setTasks: (goal: string, items: Task[]) => void;
 }
 
 // One tool, independent of which MCP server carries it.
@@ -175,6 +177,22 @@ function specs(ctx: ToolCtx): Spec[] {
       title: z.string(), start: z.string().describe('시작 시각 (예: 10월 24일 (금) 오후 3:00)'), end: z.string().optional(),
       organizer: z.string().optional(), location: z.string().optional(), event_id: z.string().optional(),
     }, async () => '회의 카드를 보여줬습니다. 턴을 끝내고 사용자의 결정을 기다리세요.'),
+    spec('search_conversations', '당신이 참여한 지난 대화(DM, 그룹, 스레드)에서 메시지를 찾습니다. 모든 단어가 들어간 메시지를 최신순으로 돌려줍니다. 사용자가 예전에 말한 내용이나 이전 결과를 찾을 때 쓰세요.', {
+      query: z.string().describe('찾을 단어들 (공백으로 구분)'), limit: z.number().optional().describe('최대 개수 (기본 10, 최대 30)'),
+    }, async ({ query, limit }) => {
+      const mine = ctx.state.convs.filter((c) => c.botIds.includes(ctx.bot.id));
+      const hits = searchMessages(mine, query, Math.min(30, Math.max(1, limit ?? 10)));
+      const who = (botId?: string) => (botId ? ctx.state.bots.find((b) => b.id === botId)?.name || 'Bot' : ctx.state.settings.userName);
+      return hits.map(({ conv, msg, snippet }) =>
+        `- [${new Date(msg.ts).toLocaleString('ko-KR')}] ${conv.kind === 'group' ? conv.name : 'DM'} · ${msg.role === 'user' && !msg.fromBotId ? who() : who(msg.botId || msg.fromBotId)}: ${snippet}`).join('\n') || '찾은 메시지가 없어요';
+    }),
+    spec('track_tasks', '이 대화의 목표와 작업 목록을 채팅 위에 보여줍니다. 여러 단계로 된 일을 시작할 때 만들고, 단계가 바뀔 때마다 전체 목록을 다시 보내 상태를 갱신하세요. tasks를 비우면 목록을 지웁니다.', {
+      goal: z.string().describe('이 일의 목표 (한 줄)'),
+      tasks: z.array(z.object({ text: z.string(), status: z.enum(['todo', 'doing', 'done']) })).max(30),
+    }, async ({ goal, tasks }) => {
+      ctx.setTasks(goal, tasks);
+      return tasks.length ? `작업 ${tasks.filter((t) => t.status === 'done').length}/${tasks.length} 완료로 표시했어요` : '작업 목록을 지웠어요';
+    }),
     spec('cancel_routine', '루틴을 끕니다.', { id: z.string() }, async ({ id }) => {
       ctx.cancelRoutine(id);
       return '루틴을 껐습니다';
