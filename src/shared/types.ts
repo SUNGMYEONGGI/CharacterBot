@@ -318,6 +318,7 @@ export interface Broadcast extends State {
   };
   mcpStatus: Record<string, McpStatus>;
   secretNames: string[];
+  legacySecrets: 'importing' | 'failed' | null; // CharacterBot 0.1.x secrets not yet imported
   oauthConnected: string[];
   hasGoogleClient: boolean;
   providerKeys: string[];

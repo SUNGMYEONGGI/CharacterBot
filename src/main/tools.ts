@@ -13,11 +13,46 @@ import type { Bot, Routine, State } from '../shared/types';
 import type { AgentSdk } from './agent';
 import type { ScheduleInput } from './routines';
 
-// Resolves a path inside the workspace and refuses anything that escapes it.
+const within = (root: string, p: string) => p === root || p.startsWith(root + path.sep);
+const realpath = (p: string) => {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+};
+
+// Resolves a path inside the workspace and refuses anything that escapes it,
+// also through symlinks (checked on the deepest part of the path that exists).
 function inside(ws: string, p = '.'): string {
   const full = path.resolve(ws, p);
-  if (full !== ws && !full.startsWith(ws + path.sep)) throw new Error('작업 폴더 밖의 경로는 사용할 수 없습니다');
+  const fail = () => new Error('작업 폴더 밖의 경로는 사용할 수 없습니다');
+  if (!within(ws, full)) throw fail();
+  let probe = full;
+  for (;;) {
+    try {
+      fs.lstatSync(probe);
+      break;
+    } catch {
+      if (probe === ws || probe === path.dirname(probe)) return full;
+      probe = path.dirname(probe);
+    }
+  }
+  let real: string;
+  try {
+    real = path.join(fs.realpathSync(probe), path.relative(probe, full));
+  } catch {
+    throw fail(); // a dangling symlink
+  }
+  if (!within(realpath(ws), real)) throw fail();
   return full;
+}
+
+// Files that macOS runs (or installs) when opened, rather than showing them.
+const RUNNABLE = /\.(app|command|tool|terminal|term|sh|bash|zsh|csh|pkg|mpkg|dmg|webloc|inetloc|fileloc|url|scpt|scptd|applescript|workflow|action|prefpane|kext|bundle|plugin|jar|shortcut|configprofile|mobileconfig|osax|saver|qlgenerator|wflow)$/i;
+function runnable(full: string): boolean {
+  const st = fs.statSync(full);
+  return st.isDirectory() || (st.mode & 0o111) !== 0 || RUNNABLE.test(full);
 }
 
 export interface FileEntry {
@@ -191,4 +226,4 @@ async function openHttpTurn(ctx: ToolCtx): Promise<AppTools> {
   return { url: await httpEndpoint(), token, close: () => turns.delete(token) };
 }
 
-export { buildServer, openHttpTurn, listFiles, inside };
+export { buildServer, openHttpTurn, listFiles, inside, runnable };

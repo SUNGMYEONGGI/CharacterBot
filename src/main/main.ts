@@ -110,6 +110,7 @@ function broadcast() {
       runtime: { pending: runtime.pending, running: [...runtime.running.keys()], active: runtime.active, started: runtime.started, history: runtime.history },
       mcpStatus: mcp.status(),
       secretNames: Object.keys(userSecretsFrom(secrets)),
+      legacySecrets: fs.existsSync(legacySecretsFile()) ? (importingLegacy ? 'importing' : 'failed') : null,
       oauthConnected: Object.entries(secrets.__oauth || {}).filter(([, rec]) => rec.tokens).map(([id]) => id),
       hasGoogleClient: Boolean(secrets.__google_client),
       providerKeys: state.settings.providers.filter((p) => secrets[`__provider_${p.id}`]).map((p) => p.id),
@@ -123,7 +124,10 @@ function broadcast() {
 
 // ---------- secrets (encrypted with the OS keychain) ----------
 
-let legacyTried = false;
+// A secrets.bin this build can't decrypt (CharacterBot 0.1.x used its own
+// Keychain item) is set aside, so new secrets never overwrite it, and imported
+// in the background by importLegacySecrets.
+const legacySecretsFile = () => `${secretsFile()}.${rename.LEGACY_NAME}`;
 function readSecrets(): SecretStore {
   let blob: Buffer;
   try {
@@ -134,27 +138,42 @@ function readSecrets(): SecretStore {
   try {
     return JSON.parse(safeStorage.decryptString(blob));
   } catch {}
-  // Written by CharacterBot (v0.1.x) under its own Keychain item: re-encrypt once.
-  // Asked at most once per launch; a declined prompt keeps a copy of the old file.
-  if (legacyTried) return {};
-  legacyTried = true;
-  const legacy = rename.decryptLegacy(blob);
-  if (!legacy) {
-    fs.copyFileSync(secretsFile(), `${secretsFile()}.${rename.LEGACY_NAME}`);
-    return {};
-  }
-  try {
-    const secrets = JSON.parse(legacy) as SecretStore;
-    if (safeStorage.isEncryptionAvailable()) fs.writeFileSync(secretsFile(), safeStorage.encryptString(legacy));
-    return secrets;
-  } catch {
-    return {};
-  }
+  if (!fs.existsSync(legacySecretsFile())) fs.renameSync(secretsFile(), legacySecretsFile());
+  return {};
+}
+
+// Merges the set-aside file back (secrets saved since win). False while it
+// still can't be read; settings › 연결 offers to try again.
+let importingLegacy: Promise<boolean> | null = null;
+function importLegacySecrets(): Promise<boolean> {
+  readSecrets(); // sets an unreadable file aside
+  if (!fs.existsSync(legacySecretsFile())) return Promise.resolve(true);
+  importingLegacy ||= (async () => {
+    const blob = fs.readFileSync(legacySecretsFile());
+    let text: string | null = null;
+    try {
+      text = safeStorage.decryptString(blob);
+    } catch {
+      text = rename.decryptLegacy(blob, await rename.legacyPassword());
+    }
+    let old: SecretStore;
+    try {
+      old = JSON.parse(text ?? '');
+    } catch {
+      return false;
+    }
+    const current = readSecrets();
+    writeSecrets({ ...old, ...current, __oauth: { ...old.__oauth, ...current.__oauth } });
+    fs.rmSync(legacySecretsFile());
+    return true;
+  })().finally(() => { importingLegacy = null; broadcast(); });
+  return importingLegacy;
 }
 
 function writeSecrets(secrets: SecretStore): void {
   if (!safeStorage.isEncryptionAvailable()) throw new Error('OS 암호화 저장소를 사용할 수 없습니다');
-  fs.writeFileSync(secretsFile(), safeStorage.encryptString(JSON.stringify(secrets)));
+  fs.writeFileSync(secretsFile(), safeStorage.encryptString(JSON.stringify(secrets)), { mode: 0o600 });
+  fs.chmodSync(secretsFile(), 0o600);
   syncMcp();
   broadcast();
 }
@@ -259,7 +278,22 @@ function imageColor(dataUrl: string): string | null {
   if (lum > 0.78) rgb = rgb.map((v) => v * (0.62 / lum));
   return `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
 }
-const withImageColor = <T extends Partial<Bot>>(patch: T): T => (patch.image ? { ...patch, color: imageColor(patch.image) || patch.color } : patch);
+// Bot looks come from the renderer, templates and CSV files: keep only a
+// #rrggbb color, a data: image and a plain model id.
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+const MODEL_ID = /^[\w.:/[\]-]{0,100}$/;
+function cleanLook<T extends Partial<Bot>>(patch: T): T {
+  const p = { ...patch };
+  if (p.color !== undefined && !HEX_COLOR.test(String(p.color))) delete p.color;
+  if (p.image != null && !/^data:image\/(png|jpeg|webp|gif);base64,/.test(String(p.image))) delete p.image;
+  if (p.model !== undefined && !MODEL_ID.test(String(p.model))) delete p.model;
+  delete (p as Partial<Bot>).id;
+  return p;
+}
+const withImageColor = <T extends Partial<Bot>>(patch: T): T => {
+  const p = cleanLook(patch);
+  return p.image ? { ...p, color: imageColor(p.image) || p.color } : p;
+};
 
 // ---------- agent turns ----------
 
@@ -380,6 +414,13 @@ async function review(call: Call, secrets: SecretStore): Promise<{ effect: Effec
   // Bash follows 설정 › 컴퓨터 › 이 컴퓨터에서 실행.
   if (s.blockAccountWrites !== false && gateway.accountWrite(call.name, remote)) {
     return { effect: 'deny', reason: '사용자 계정과 연동된 앱(Slack, Gmail, 캘린더 등)에 쓰는 작업은 막혀 있습니다. 보내려던 내용은 채팅에 초안으로 보여주세요.' };
+  }
+  // Keys, keychains, browser profiles: ask unless the user's own rule decides.
+  if (gateway.sensitive(call)) {
+    const ruled = gateway.decide(call, state.rules);
+    if (ruled.rule) return ruled;
+    const asked = gateway.finalize('ask', null, call);
+    return { ...asked, reason: asked.reason || '비밀번호, 키, 브라우저 데이터처럼 민감한 위치에 접근하려고 해요' };
   }
   if (!s.autoReview) return { effect: 'allow' };
   const base = gateway.decide(call, state.rules, { Bash: s.computerAccess });
@@ -924,18 +965,22 @@ async function runRoutine(routine: Routine, conv: Conv, event: string | null = n
 
 // ---------- plugins ----------
 
-function installPlugin(dir: string): void {
+async function installPlugin(dir: string): Promise<void> {
   const plugin = plugins.readPlugin(dir);
   if (state.plugins.some((p) => p.name === plugin.name)) throw new Error(`"${plugin.name}" 플러그인이 이미 설치되어 있습니다`);
+  const servers: ServerInput[] = Object.entries(plugin.mcpServers).map(([name, cfg]) => ({ name, ...cfg }));
+  const skills = plugin.skills.length ? `\n\n함께 추가되는 스킬(모든 Bot이 따르는 지시문): ${plugin.skills.map((x) => x.name).join(', ')}` : '';
+  const run = await confirmRun(servers, skills);
   const pluginId = store.id('plg');
   state.plugins.push({ id: pluginId, name: plugin.name, description: plugin.description, version: plugin.version, path: dir, enabled: true });
-  for (const [name, cfg] of Object.entries(plugin.mcpServers)) addServer({ name, ...cfg }, pluginId);
+  for (const cfg of servers) addServer(cfg, pluginId, run || !cfg.command);
   for (const skill of plugin.skills) addSkill(skill, pluginId);
   syncMcp();
 }
 
-function setPluginEnabled(pluginId: string, enabled: boolean): void {
+async function setPluginEnabled(pluginId: string, enabled: boolean): Promise<void> {
   const plugin = state.plugins.find((p) => p.id === pluginId);
+  if (enabled && !(await confirmRun(state.mcpServers.filter((sv) => sv.source === pluginId && !sv.enabled)))) return;
   if (plugin) plugin.enabled = enabled;
   for (const s of state.mcpServers) if (s.source === pluginId) s.enabled = enabled;
   for (const s of state.skills) if (s.source === pluginId) s.disabled = !enabled;
@@ -949,13 +994,28 @@ function removePlugin(pluginId: string): void {
   syncMcp();
 }
 
+// Local (command) servers run code on the Mac as soon as they start, so the user
+// sees the exact command first. A declined server is kept, turned off.
+async function confirmRun(servers: Partial<Pick<McpServer, 'name' | 'command' | 'args' | 'env'>>[], extra = ''): Promise<boolean> {
+  const local = servers.filter((sv) => sv.command);
+  if (!local.length) return true;
+  const lines = local.map((sv) => `• ${sv.name}: ${[sv.command, ...(sv.args || [])].join(' ')}${Object.keys(sv.env || {}).length ? `\n   환경 변수: ${Object.keys(sv.env || {}).join(', ')}` : ''}`);
+  const { response } = await dialog.showMessageBox(mainWindow(), {
+    type: 'warning', buttons: ['실행', '취소'], defaultId: 1, cancelId: 1,
+    message: local.length > 1 ? `MCP 서버 ${local.length}개를 이 Mac에서 실행할까요?` : `"${local[0].name}" MCP 서버를 이 Mac에서 실행할까요?`,
+    detail: `${lines.join('\n').slice(0, 3000)}${extra}\n\n믿을 수 있는 출처의 명령만 실행하세요. 취소하면 꺼진 상태로 추가돼요.`,
+  });
+  return response === 0;
+}
+const RUN_FIELDS = ['command', 'args', 'env'] as const;
+
 // New servers and skills are granted to every bot; each bot can turn them off.
 type ServerInput = Partial<Omit<McpServer, 'id' | 'enabled' | 'source'>> & { serverUrl?: string };
-function addServer(cfg: ServerInput, source = 'user'): McpServer {
+function addServer(cfg: ServerInput, source = 'user', enabled = true): McpServer {
   const { name, command, args, env, headers, oauth: auth } = cfg;
   const url = cfg.url || cfg.serverUrl;
   if (!name || (!command && !url)) throw new Error('MCP 서버에는 name과 command 또는 url이 필요합니다');
-  const server: McpServer = { id: store.id('mcp'), name, command, args, env, url, headers, oauth: url && auth ? auth : undefined, enabled: true, source };
+  const server: McpServer = { id: store.id('mcp'), name, command, args, env, url, headers, oauth: url && auth ? auth : undefined, enabled, source };
   state.mcpServers.push(server);
   for (const bot of state.bots) bot.serverIds.push(server.id);
   return server;
@@ -1113,7 +1173,8 @@ const actions = {
     for (const c of state.convs) if (c.sectionId === id) delete c.sectionId;
   },
   updateConv(id: string, patch: Partial<Conv>) {
-    Object.assign(findConv(id), patch);
+    const { id: _, messages: __, sessions: ___, ...rest } = patch || {};
+    Object.assign(findConv(id), rest);
   },
   clearConv(id: string) {
     Object.assign(findConv(id), { messages: [], sessions: {}, summary: null });
@@ -1134,7 +1195,7 @@ const actions = {
   importBots(list: { name: string; role?: string; label?: string; model?: string }[]): number {
     for (const b of list.slice(0, 50)) {
       const bot = getBot(findConv(actions.createBot(b.name)).botIds[0]);
-      Object.assign(bot, { ...(b.role ? { systemPrompt: b.role } : {}), ...(b.label ? { label: b.label } : {}), ...(b.model ? { model: b.model } : {}) });
+      Object.assign(bot, cleanLook({ ...(b.role ? { systemPrompt: String(b.role) } : {}), ...(b.label ? { label: String(b.label) } : {}), ...(b.model ? { model: String(b.model) } : {}) }));
     }
     return Math.min(list.length, 50);
   },
@@ -1151,9 +1212,28 @@ const actions = {
     const bot = getBot(botId);
     bot.memories = bot.memories.filter((m) => m.id !== memId);
   },
-  updateSettings(patch: Partial<Settings>) {
-    Object.assign(state.settings, patch);
-    if (patch.theme) nativeTheme.themeSource = patch.theme; // native menus, scrollbars, dialogs
+  // Only known keys with the right type. Changes that loosen safety are
+  // confirmed in a native dialog the page can't fake or click.
+  async updateSettings(patch: Partial<Settings>) {
+    const defaults = store.defaultState().settings as unknown as Record<string, unknown>;
+    const cur = state.settings;
+    const clean = Object.fromEntries(Object.entries(patch || {}).filter(([k, v]) =>
+      k === 'mainBotId' ? typeof v === 'string' : k in defaults && (Array.isArray(defaults[k]) ? Array.isArray(v) : typeof v === typeof defaults[k]))) as Partial<Settings>;
+    if (clean.computerAccess && !['allow', 'ask', 'deny'].includes(clean.computerAccess)) delete clean.computerAccess;
+    const risky = [
+      clean.blockAccountWrites === false && cur.blockAccountWrites !== false ? '계정과 연동된 앱(Slack, Gmail 등)에 쓰기 허용' : '',
+      clean.autoReview === false && cur.autoReview ? '자동 검토 끄기 (모든 작업을 묻지 않고 실행)' : '',
+      clean.computerAccess === 'allow' && cur.computerAccess !== 'allow' ? 'Bot이 이 Mac에서 명령을 묻지 않고 실행' : '',
+    ].filter(Boolean);
+    if (risky.length) {
+      const { response } = await dialog.showMessageBox(mainWindow(), {
+        type: 'warning', buttons: ['변경', '취소'], defaultId: 1, cancelId: 1,
+        message: '보안 설정을 바꿀까요?', detail: risky.map((r) => `• ${r}`).join('\n'),
+      });
+      if (response !== 0) for (const k of ['blockAccountWrites', 'autoReview', 'computerAccess'] as const) delete clean[k];
+    }
+    Object.assign(state.settings, clean);
+    if (clean.theme) nativeTheme.themeSource = clean.theme; // native menus, scrollbars, dialogs
   },
   // ----- LLM providers (settings › 모델) -----
   refreshClaude,
@@ -1302,6 +1382,9 @@ const actions = {
     writeSecrets({ ...readSecrets(), __google_client: { client_id: clientId.trim(), client_secret: clientSecret.trim() || undefined } });
     return true;
   },
+  retryLegacySecrets(): Promise<boolean> {
+    return importLegacySecrets();
+  },
   setSecret(name: string, value: string) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error('시크릿 이름은 영문, 숫자, _만 쓸 수 있습니다');
     writeSecrets({ ...readSecrets(), [name]: value });
@@ -1311,20 +1394,26 @@ const actions = {
     writeSecrets(rest);
   },
   // Accepts Claude-desktop style `{ "mcpServers": { name: {...} } }` JSON.
-  addMcpJson(text: string): boolean {
+  async addMcpJson(text: string): Promise<boolean> {
     const parsed = JSON.parse(text);
-    const servers: Record<string, ServerInput> = parsed.mcpServers || parsed;
-    for (const [name, cfg] of Object.entries(servers)) addServer({ name, ...cfg });
+    const servers = Object.entries((parsed.mcpServers || parsed) as Record<string, ServerInput>).map(([name, cfg]) => ({ name, ...cfg }));
+    const run = await confirmRun(servers);
+    for (const cfg of servers) addServer(cfg, 'user', run || !cfg.command);
     syncMcp();
     return true;
   },
-  addMcpServer(cfg: ServerInput): string {
-    const server = addServer(cfg);
+  async addMcpServer(cfg: ServerInput): Promise<string> {
+    const server = addServer(cfg, 'user', await confirmRun([cfg]));
     syncMcp();
     return server.id;
   },
-  updateMcpServer(id: string, patch: Partial<McpServer>) {
-    Object.assign(findIn(state.mcpServers, id), patch);
+  async updateMcpServer(id: string, patch: Partial<McpServer>) {
+    const server = findIn(state.mcpServers, id);
+    const { id: _, source: __, ...rest } = patch;
+    const next = { ...server, ...rest };
+    const changesRun = RUN_FIELDS.some((k) => k in rest && JSON.stringify(rest[k]) !== JSON.stringify(server[k]));
+    if (next.enabled && (changesRun || !server.enabled) && !(await confirmRun([next]))) return;
+    Object.assign(server, rest);
     syncMcp();
   },
   deleteMcpServer(id: string) {
@@ -1334,7 +1423,7 @@ const actions = {
   },
   async installPlugin() {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow(), { properties: ['openDirectory'], title: '플러그인 폴더 선택' });
-    if (!canceled) installPlugin(filePaths[0]);
+    if (!canceled) await installPlugin(filePaths[0]);
   },
   setPluginEnabled,
   removePlugin,
@@ -1427,8 +1516,11 @@ const actions = {
     const kind = ({ '.md': 'markdown', '.markdown': 'markdown', '.csv': 'table', '.tsv': 'table' } as Record<string, string>)[ext] || 'text';
     return { kind, name, ext, text: buf.toString('utf8') };
   },
+  // Apps, scripts and installers a Bot wrote are shown in Finder, never run.
   openFile(botId: string, rel: string) {
-    return shell.openPath(tools.inside(workspace(botId), rel));
+    const full = tools.inside(workspace(botId), rel);
+    if (tools.runnable(full)) return void shell.showItemInFolder(full);
+    return shell.openPath(full);
   },
   revealWorkspace(botId: string) {
     return shell.openPath(workspace(botId));
@@ -1450,10 +1542,19 @@ const actions = {
     if (canceled) return null;
     const tpl = JSON.parse(fs.readFileSync(filePaths[0], 'utf8'));
     if (tpl.characterbotTemplate !== 1) throw new Error('Bot 템플릿 파일이 아닙니다');
-    const convId = actions.createBot(tpl.name);
+    const skills = (Array.isArray(tpl.skills) ? tpl.skills : []).filter((x: unknown) => typeof (x as { name?: unknown })?.name === 'string') as { name: string; description?: string; body?: string }[];
+    // A shared template can carry hidden instructions: show them before creating the Bot.
+    const prompt = typeof tpl.systemPrompt === 'string' ? tpl.systemPrompt : '';
+    const { response } = await dialog.showMessageBox(mainWindow(), {
+      type: 'question', buttons: ['만들기', '취소'], defaultId: 1, cancelId: 1,
+      message: `"${String(tpl.name || 'Bot')}" Bot을 템플릿에서 만들까요?`,
+      detail: `지시문:\n${prompt.slice(0, 1500)}${prompt.length > 1500 ? '\n…' : ''}${skills.length ? `\n\n함께 추가되는 스킬: ${skills.map((x) => x.name).join(', ')}` : ''}`,
+    });
+    if (response !== 0) return null;
+    const convId = actions.createBot(typeof tpl.name === 'string' ? tpl.name : undefined);
     const bot = getBot(findConv(convId).botIds[0]);
-    Object.assign(bot, { label: tpl.label || '', color: tpl.color || bot.color, systemPrompt: tpl.systemPrompt, model: tpl.model || '' });
-    for (const s of (tpl.skills || []) as { name: string; description?: string; body?: string }[]) {
+    Object.assign(bot, cleanLook({ label: typeof tpl.label === 'string' ? tpl.label : '', color: tpl.color, systemPrompt: prompt, model: typeof tpl.model === 'string' ? tpl.model : '' }));
+    for (const s of skills) {
       const existing = state.skills.find((x) => x.name === s.name);
       if (existing) { if (!bot.skillIds.includes(existing.id)) bot.skillIds.push(existing.id); } else addSkill(s);
     }
@@ -1465,14 +1566,20 @@ export type Actions = typeof actions;
 // Queries that change nothing; broadcasting after them would re-render the
 // panel, which queries again (the library tab flicker loop).
 const QUERIES = new Set<string>(['listFiles', 'hostInfo', 'getUsage', 'checkUpdates', 'openFile', 'revealWorkspace', 'generateIcon', 'readFile', 'micAccess', 'transcribe']);
-ipcMain.handle('act', async (_e, name: keyof Actions, ...args: unknown[]) => {
+// Only the app's own page may call actions: not a subframe, not a navigated-away page.
+const fromApp = (e: Electron.IpcMainInvokeEvent): boolean =>
+  !!win && !win.isDestroyed() && e.sender === win.webContents && e.senderFrame === win.webContents.mainFrame && e.senderFrame.url.startsWith('file://');
+ipcMain.handle('act', async (e, name: keyof Actions, ...args: unknown[]) => {
+  if (!fromApp(e)) throw new Error('허용되지 않은 호출입니다');
+  if (typeof name !== 'string' || !Object.hasOwn(actions, name)) throw new Error(`알 수 없는 동작: ${String(name)}`);
   const fn = actions[name] as (...a: unknown[]) => unknown;
   if (typeof fn !== 'function') throw new Error(`알 수 없는 동작: ${String(name)}`);
   const result = await fn(...args);
   if (!QUERIES.has(name)) { broadcast(); syncTriggers(); }
   return result;
 });
-ipcMain.handle('init', () => {
+ipcMain.handle('init', (e) => {
+  if (!fromApp(e)) throw new Error('허용되지 않은 호출입니다');
   broadcast();
   return true;
 });
@@ -1510,6 +1617,7 @@ app.whenReady().then(() => {
   refreshChatgpt();
   refreshModels();
   createWindow();
+  void importLegacySecrets();
   setInterval(tickRoutines, 30_000);
   syncTriggers();
 });

@@ -179,6 +179,39 @@ assert.equal(gateway.accountWrite('mcp__characterbot__remember'), false);
   assert.equal(rename.decryptLegacy(blob, 'wrong'), null);
 }
 
+// Workspace paths can't escape through symlinks; runnable files are detected.
+{
+  const ws = path.join(tmp, 'ws');
+  fs.mkdirSync(path.join(ws, 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(ws, 'note.md'), 'hi');
+  fs.writeFileSync(path.join(ws, 'run.command'), 'echo');
+  fs.writeFileSync(path.join(ws, 'tool'), 'x', { mode: 0o755 });
+  fs.symlinkSync(os.homedir(), path.join(ws, 'home'));
+  fs.symlinkSync(path.join(tmp, 'missing'), path.join(ws, 'dangling'));
+  fs.symlinkSync(path.join(ws, 'note.md'), path.join(ws, 'sub', 'ok-link'));
+  assert.equal(tools.inside(ws, 'note.md'), path.join(ws, 'note.md'));
+  assert.equal(tools.inside(ws, 'new/dir/file.txt'), path.join(ws, 'new/dir/file.txt')); // not created yet
+  assert.equal(tools.inside(ws, 'sub/ok-link'), path.join(ws, 'sub/ok-link'));
+  assert.throws(() => tools.inside(ws, 'home/.ssh/id_ed25519'));
+  assert.throws(() => tools.inside(ws, 'home'));
+  assert.throws(() => tools.inside(ws, 'dangling'));
+  assert.throws(() => tools.inside(ws, '../x'));
+  assert.equal(tools.runnable(path.join(ws, 'note.md')), false);
+  assert.equal(tools.runnable(path.join(ws, 'run.command')), true);
+  assert.equal(tools.runnable(path.join(ws, 'tool')), true);
+  assert.equal(tools.runnable(path.join(ws, 'sub')), true);
+}
+
+// Credentials ask first even with full access; ordinary work and file contents don't.
+assert.equal(gateway.sensitive({ name: 'Bash', args: { command: 'cat ~/.ssh/id_ed25519' } }), true);
+assert.equal(gateway.sensitive({ name: 'Bash', args: { command: 'security find-generic-password -w -s x' } }), true);
+assert.equal(gateway.sensitive({ name: 'Read', args: { file_path: '/Users/a/Library/Application Support/Google/Chrome/Default/Cookies' } }), true);
+assert.equal(gateway.sensitive({ name: 'Read', args: { file_path: '/Users/a/Library/Application Support/PixelBot/secrets.bin' } }), true);
+assert.equal(gateway.sensitive({ name: 'Read', args: { file_path: '/Users/a/Library/Application Support/PixelBot/workspaces/bot_1/report.md' } }), false);
+assert.equal(gateway.sensitive({ name: 'Bash', args: { command: 'npm test && git status' } }), false);
+assert.equal(gateway.sensitive({ name: 'Write', args: { file_path: '/tmp/r.md', content: 'security findings: rotate ~/.ssh keys' } }), false);
+assert.equal(gateway.sensitive({ name: 'mcp__echo__get', args: { q: '.ssh/' } }), false);
+
 // Pixel avatars render for every shape and size.
 (globalThis as unknown as { document: unknown }).document = { addEventListener() {} };
 // require, not import: ui.ts touches document when it loads.

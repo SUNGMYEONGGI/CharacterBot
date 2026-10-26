@@ -188,7 +188,7 @@ function sprite(i: number): Uint8Array {
 
 // Mixes a #rrggbb color toward black (t < 0) or white (t > 0).
 function tint(hex: string, t: number): string {
-  const n = /^#[0-9a-f]{6}$/i.test(hex) ? parseInt(hex.slice(1), 16) : 0x999999;
+  const n = parseInt(hex.slice(1), 16);
   const to = t < 0 ? 0 : 255;
   const ch = (v: number) => Math.round(v + (to - v) * Math.abs(t)).toString(16).padStart(2, '0');
   return `#${ch(n >> 16)}${ch((n >> 8) & 255)}${ch(n & 255)}`;
@@ -215,6 +215,7 @@ function runs(g: Uint8Array, colors: string[]): string {
 // whole bot, .av-look shifts the eyes (gaze), .eye blinks.
 export function avatarSvg(shape = 0, color = '#999', size = 40, { sleeping = false } = {}): string {
   const i = Number.isInteger(shape) && shape < SHAPE_COUNT ? shape : 0;
+  if (!/^#[0-9a-f]{6}$/i.test(color)) color = '#999999'; // it lands in markup
   const body = runs(sprite(i), ['', color, tint(color, -0.32), tint(color, 0.28)]);
   const leaf = i === SHAPE_COUNT - 1 ? px(8, 0, 1, 2, '#3a2a1a') + px(9, 0, 2, 1, '#2ec27e') + px(10, 1, 2, 1, '#2ec27e') : '';
   // The two white eyes, the right one a pixel higher (the old tilted look).

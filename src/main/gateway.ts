@@ -36,6 +36,24 @@ function accountWrite(name: string, remote: string[] = []): boolean {
   return m[1].startsWith('claude_ai_') || remote.includes(m[1]);
 }
 
+// Credentials and private data a Bot never needs for normal work. Any built-in
+// tool call (Bash, Read, Write, Grep…) that names one asks first, even with full
+// computer access, so a prompt injection can't quietly read keys.
+const SENSITIVE = [
+  /(^|[\s"'/=~])\.ssh(\/|\b)/, /\.gnupg\b/, /\.aws\/(credentials|config)\b/, /\.netrc\b/, /\.npmrc\b/, /\.pypirc\b/, /\.docker\/config\.json/,
+  /\.kube\/config\b/, /\.config\/(gh|gcloud|characterbot)\b/, /\.claude\.json\b/, /\.codex\/auth\.json/, /codex\/auth\.json/,
+  /Library\/Keychains\b/, /\bsecurity\s+(find-(generic|internet)-password|dump-keychain|export|unlock-keychain)\b/, /Library\/Cookies\b/,
+  /Library\/Application Support\/(Google\/Chrome|BraveSoftware|Microsoft Edge|Arc|Firefox|Vivaldi|com\.operasoftware)/, /Library\/Safari\b/, /Library\/Messages\b/, /Library\/Mail\b/,
+  /\bsecrets\.bin\b/, /Application Support\/(PixelBot|CharacterBot)( Dev)?\/state\.json/,
+];
+function sensitive(call: Call): boolean {
+  if (call.name.startsWith('mcp__')) return false;
+  // What a file tool writes is content, not a target: only its path counts.
+  const args = /^(Write|Edit|MultiEdit|NotebookEdit)$/.test(call.name) ? { path: call.args?.file_path ?? call.args?.notebook_path } : call.args || {};
+  const text = JSON.stringify(args).replace(/\\\//g, '/');
+  return SENSITIVE.some((re) => re.test(text));
+}
+
 function globToRegExp(glob: string): RegExp {
   const escaped = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
   return new RegExp(`^${escaped}$`);
@@ -86,4 +104,4 @@ function maskSecrets(text: unknown, secretValues: string[]): string {
   return out;
 }
 
-export { accountWrite, decide, finalize, combine, maskSecrets, globToRegExp };
+export { accountWrite, sensitive, decide, finalize, combine, maskSecrets, globToRegExp };
