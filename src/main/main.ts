@@ -138,35 +138,35 @@ function readSecrets(): SecretStore {
   try {
     return JSON.parse(safeStorage.decryptString(blob));
   } catch {}
-  if (!fs.existsSync(legacySecretsFile())) fs.renameSync(secretsFile(), legacySecretsFile());
+  try {
+    if (!fs.existsSync(legacySecretsFile())) fs.renameSync(secretsFile(), legacySecretsFile());
+  } catch {}
   return {};
 }
 
+async function mergeLegacySecrets(): Promise<boolean> {
+  const blob = fs.readFileSync(legacySecretsFile());
+  let text: string | null = null;
+  try {
+    text = safeStorage.decryptString(blob);
+  } catch {
+    text = rename.decryptLegacy(blob, await rename.legacyPassword());
+  }
+  if (text == null) return false;
+  const old = JSON.parse(text) as SecretStore;
+  const current = readSecrets();
+  writeSecrets({ ...old, ...current, __oauth: { ...old.__oauth, ...current.__oauth } });
+  fs.rmSync(legacySecretsFile());
+  return true;
+}
+
 // Merges the set-aside file back (secrets saved since win). False while it
-// still can't be read; settings › 연결 offers to try again.
+// still can't be read; 설정 › 컴퓨터 › 환경 변수 offers to try again.
 let importingLegacy: Promise<boolean> | null = null;
 function importLegacySecrets(): Promise<boolean> {
   readSecrets(); // sets an unreadable file aside
   if (!fs.existsSync(legacySecretsFile())) return Promise.resolve(true);
-  importingLegacy ||= (async () => {
-    const blob = fs.readFileSync(legacySecretsFile());
-    let text: string | null = null;
-    try {
-      text = safeStorage.decryptString(blob);
-    } catch {
-      text = rename.decryptLegacy(blob, await rename.legacyPassword());
-    }
-    let old: SecretStore;
-    try {
-      old = JSON.parse(text ?? '');
-    } catch {
-      return false;
-    }
-    const current = readSecrets();
-    writeSecrets({ ...old, ...current, __oauth: { ...old.__oauth, ...current.__oauth } });
-    fs.rmSync(legacySecretsFile());
-    return true;
-  })().finally(() => { importingLegacy = null; broadcast(); });
+  importingLegacy ||= mergeLegacySecrets().catch(() => false).finally(() => { importingLegacy = null; broadcast(); });
   return importingLegacy;
 }
 
@@ -417,7 +417,9 @@ async function review(call: Call, secrets: SecretStore): Promise<{ effect: Effec
   }
   // Keys, keychains, browser profiles: ask unless the user's own rule decides.
   if (gateway.sensitive(call)) {
-    const ruled = gateway.decide(call, state.rules);
+    // A plain "always allow Bash" rule doesn't cover these; a deny or a rule
+    // with its own pattern does.
+    const ruled = gateway.decide(call, state.rules.filter((r) => r.effect !== 'allow' || r.match));
     if (ruled.rule) return ruled;
     const asked = gateway.finalize('ask', null, call);
     return { ...asked, reason: asked.reason || '비밀번호, 키, 브라우저 데이터처럼 민감한 위치에 접근하려고 해요' };
@@ -548,7 +550,7 @@ async function botTurn(conv: Conv, bot: Bot, initiator: Initiator, signal: Abort
     if (effect === 'ask' && external && bot.drafts === false) effect = 'allow';
     if (effect === 'ask') {
       const answer = await askApproval(conv, bot, call, signal);
-      if (answer.decision === 'always') state.rules.push({ id: store.id('rule'), effect: 'allow', tool: call.name, botId: bot.id });
+      if (answer.decision === 'always' && !gateway.sensitive(call)) state.rules.push({ id: store.id('rule'), effect: 'allow', tool: call.name, botId: bot.id });
       effect = answer.decision === 'deny' ? 'deny' : 'allow';
       if (effect === 'allow' && external) {
         updatedInput = answer.args || call.args;
@@ -999,11 +1001,16 @@ function removePlugin(pluginId: string): void {
 async function confirmRun(servers: Partial<Pick<McpServer, 'name' | 'command' | 'args' | 'env'>>[], extra = ''): Promise<boolean> {
   const local = servers.filter((sv) => sv.command);
   if (!local.length) return true;
-  const lines = local.map((sv) => `• ${sv.name}: ${[sv.command, ...(sv.args || [])].join(' ')}${Object.keys(sv.env || {}).length ? `\n   환경 변수: ${Object.keys(sv.env || {}).join(', ')}` : ''}`);
+  const lines = local.map((sv) => `• ${sv.name}: ${[sv.command, ...(sv.args || [])].join(' ')}${Object.keys(sv.env || {}).length ? `\n   환경 변수: ${Object.keys(sv.env || {}).join(', ')}` : ''}`.replace(/[ \t\r\n]+/g, ' '));
+  // Never ask about a command the dialog can't show in full.
+  if (lines.join('\n').length > 3000) {
+    await dialog.showMessageBox(mainWindow(), { type: 'warning', message: '명령이 너무 길어 전부 보여줄 수 없어요', detail: '꺼진 상태로 추가했어요. 설정 › 앱에서 명령을 확인하세요.' });
+    return false;
+  }
   const { response } = await dialog.showMessageBox(mainWindow(), {
     type: 'warning', buttons: ['실행', '취소'], defaultId: 1, cancelId: 1,
     message: local.length > 1 ? `MCP 서버 ${local.length}개를 이 Mac에서 실행할까요?` : `"${local[0].name}" MCP 서버를 이 Mac에서 실행할까요?`,
-    detail: `${lines.join('\n').slice(0, 3000)}${extra}\n\n믿을 수 있는 출처의 명령만 실행하세요. 취소하면 꺼진 상태로 추가돼요.`,
+    detail: `${lines.join('\n')}${extra}\n\n믿을 수 있는 출처의 명령만 실행하세요. 취소하면 꺼진 상태로 추가돼요.`,
   });
   return response === 0;
 }
@@ -1212,13 +1219,15 @@ const actions = {
     const bot = getBot(botId);
     bot.memories = bot.memories.filter((m) => m.id !== memId);
   },
-  // Only known keys with the right type. Changes that loosen safety are
+  // Only known keys with the right type (providers and review rules have their
+  // own actions with checks). Changes that loosen safety are
   // confirmed in a native dialog the page can't fake or click.
   async updateSettings(patch: Partial<Settings>) {
     const defaults = store.defaultState().settings as unknown as Record<string, unknown>;
     const cur = state.settings;
     const clean = Object.fromEntries(Object.entries(patch || {}).filter(([k, v]) =>
-      k === 'mainBotId' ? typeof v === 'string' : k in defaults && (Array.isArray(defaults[k]) ? Array.isArray(v) : typeof v === typeof defaults[k]))) as Partial<Settings>;
+      k === 'mainBotId' ? typeof v === 'string'
+        : !['providers', 'reviewRules'].includes(k) && Object.hasOwn(defaults, k) && typeof v === typeof defaults[k])) as Partial<Settings>;
     if (clean.computerAccess && !['allow', 'ask', 'deny'].includes(clean.computerAccess)) delete clean.computerAccess;
     const risky = [
       clean.blockAccountWrites === false && cur.blockAccountWrites !== false ? '계정과 연동된 앱(Slack, Gmail 등)에 쓰기 허용' : '',
@@ -1553,7 +1562,7 @@ const actions = {
     if (response !== 0) return null;
     const convId = actions.createBot(typeof tpl.name === 'string' ? tpl.name : undefined);
     const bot = getBot(findConv(convId).botIds[0]);
-    Object.assign(bot, cleanLook({ label: typeof tpl.label === 'string' ? tpl.label : '', color: tpl.color, systemPrompt: prompt, model: typeof tpl.model === 'string' ? tpl.model : '' }));
+    Object.assign(bot, cleanLook({ label: typeof tpl.label === 'string' ? tpl.label : '', ...(tpl.color ? { color: tpl.color } : {}), systemPrompt: prompt, model: typeof tpl.model === 'string' ? tpl.model : '' }));
     for (const s of skills) {
       const existing = state.skills.find((x) => x.name === s.name);
       if (existing) { if (!bot.skillIds.includes(existing.id)) bot.skillIds.push(existing.id); } else addSkill(s);
