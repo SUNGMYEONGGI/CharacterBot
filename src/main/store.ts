@@ -89,7 +89,9 @@ function load(file: string): State {
 
 function save(file: string, state: State): void {
   // Write to a temp file first so a crash mid-write can't corrupt history.
-  fs.writeFileSync(`${file}.tmp`, JSON.stringify(state));
+  // Owner-only: it holds every conversation and what the Bots read.
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify(state), { mode: 0o600 });
+  fs.chmodSync(`${file}.tmp`, 0o600);
   fs.renameSync(`${file}.tmp`, file);
 }
 

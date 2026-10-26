@@ -1,4 +1,5 @@
-// Without a Developer ID, sign the app ad hoc so Apple Silicon will run it.
+// Without a Developer ID, sign the app ad hoc so Apple Silicon will run it. Runs
+// as afterSign: Electron fuses are flipped after afterPack and would break the seal.
 // With CSC_LINK set, electron-builder signs it properly instead.
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');

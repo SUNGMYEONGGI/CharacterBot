@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 
 export const LEGACY_NAME = 'CharacterBot';
 
@@ -38,8 +38,7 @@ export function moveDataDir(from: string, to: string, claudeProjects = path.join
 // Decrypts a safeStorage blob written under the old app name. On macOS the key
 // is the "<name> Safe Storage" Keychain password (Chromium's v10 format:
 // AES-128-CBC, PBKDF2-SHA1 with salt "saltysalt", 1003 rounds, IV of spaces).
-// macOS asks the user once to let PixelBot read the old item.
-export function decryptLegacy(blob: Buffer, password = keychainPassword(`${LEGACY_NAME} Safe Storage`)): string | null {
+export function decryptLegacy(blob: Buffer, password: string | null): string | null {
   if (!password || blob.subarray(0, 3).toString() !== 'v10') return null;
   try {
     const key = crypto.pbkdf2Sync(password, 'saltysalt', 1003, 16, 'sha1');
@@ -50,11 +49,11 @@ export function decryptLegacy(blob: Buffer, password = keychainPassword(`${LEGAC
   }
 }
 
-function keychainPassword(service: string): string | null {
-  if (process.platform !== 'darwin') return null;
-  try {
-    return execFileSync('security', ['find-generic-password', '-w', '-s', service], { encoding: 'utf8', timeout: 60000 }).trim();
-  } catch {
-    return null;
-  }
+// Reads the old Keychain password without blocking the app; macOS asks the user
+// once to let PixelBot read the CharacterBot item.
+export function legacyPassword(): Promise<string | null> {
+  if (process.platform !== 'darwin') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    execFile('security', ['find-generic-password', '-w', '-s', `${LEGACY_NAME} Safe Storage`], { timeout: 120000 }, (err, out) => resolve(err ? null : String(out).trim()));
+  });
 }

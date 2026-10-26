@@ -447,6 +447,9 @@ function secretsSection() {
   const value = h('input', { class: 'field', type: 'password', placeholder: '값' });
   return [
     h('h3', {}, '환경 변수'),
+    S.legacySecrets ? h('div', { class: 'group' }, h('div', { class: 'srow' }, icon('key', 16),
+      h('span', { class: 'grow' }, S.legacySecrets === 'importing' ? '이전 버전(CharacterBot)의 키와 앱 연결을 가져오는 중이에요. macOS 키체인 창에서 허용을 눌러 주세요.' : '이전 버전(CharacterBot)의 키와 앱 연결을 아직 가져오지 못했어요.'),
+      S.legacySecrets === 'failed' ? h('button', { class: 'btn soft', onclick: () => act('retryLegacySecrets').then((ok) => toast(ok ? '가져왔어요' : '가져오지 못했어요. 키체인 창에서 허용을 눌러 주세요')) }, '다시 시도') : null)) : null,
     h('div', { class: 'group' },
       ...S.secretNames.map((n) => h('div', { class: 'srow' }, icon('key', 16), h('code', { class: 'grow' }, n), h('span', { class: 'muted' }, '••••••'), h('button', { class: 'x', onclick: () => act('deleteSecret', n) }, '×'))),
       h('div', { class: 'srow' }, name, value, h('button', { class: 'btn soft', onclick: () => name.value && act('setSecret', name.value.trim(), value.value).then(() => { name.value = ''; value.value = ''; }) }, '추가'))),

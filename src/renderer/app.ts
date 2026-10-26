@@ -1365,6 +1365,7 @@ window.desktop.onState((state) => {
       setTimeout(() => restyle(botId), 1600);
     }
   }
+  if (state.legacySecrets === 'failed' && S?.legacySecrets !== 'failed') toast('이전 버전(CharacterBot)의 키를 가져오지 못했어요. 설정 › 컴퓨터 › 환경 변수에서 다시 시도할 수 있어요');
   S = state;
   renderOnboarding(state);
   render(first);

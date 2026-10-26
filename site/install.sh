@@ -12,6 +12,9 @@ trap 'hdiutil detach -quiet "$MNT" 2>/dev/null || true; rm -rf "$TMP"' EXIT
 
 echo "Downloading PixelBot..."
 curl -fL --progress-bar "$URL" -o "$TMP/PixelBot.dmg"
+# The release publishes the DMG's SHA-256 next to it; refuse a download that doesn't match.
+curl -fsL "$URL.sha256" -o "$TMP/PixelBot.dmg.sha256" || { echo "Couldn't download the checksum." >&2; exit 1; }
+[ "$(shasum -a 256 "$TMP/PixelBot.dmg" | cut -d' ' -f1)" = "$(cut -d' ' -f1 "$TMP/PixelBot.dmg.sha256")" ] || { echo "Checksum mismatch: the download is damaged or was changed." >&2; exit 1; }
 hdiutil attach -quiet -nobrowse -mountpoint "$MNT" "$TMP/PixelBot.dmg"
 
 osascript -e 'quit app "PixelBot"' 2>/dev/null || true
