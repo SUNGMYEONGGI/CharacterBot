@@ -53,7 +53,7 @@
     "publish": {
       "provider": "github",
       "owner": "SUNGMYEONGGI",
-      "repo": "CharacterBot"
+      "repo": "PixelBot"
     },
     "afterPack": "build/adhoc-sign.cjs"
   },

@@ -11,11 +11,13 @@ export const LEGACY_NAME = 'CharacterBot';
 // non-alphanumeric character turned into "-">.
 const projectKey = (dir: string): string => dir.replace(/[^a-zA-Z0-9]/g, '-');
 
-// Moves `from` to `to` when only `from` exists, rewrites the absolute paths in
+// Moves `from` to `to` when `to` has no state.json yet, rewrites the absolute paths in
 // state.json and moves the bots' Claude sessions so conversations resume.
 // Returns true when it moved something.
 export function moveDataDir(from: string, to: string, claudeProjects = path.join(os.homedir(), '.claude', 'projects')): boolean {
-  if (fs.existsSync(to) || !fs.existsSync(from)) return false;
+  if (fs.existsSync(path.join(to, 'state.json')) || !fs.existsSync(from)) return false;
+  // Chromium can create the new folder (caches only) before this runs.
+  fs.rmSync(to, { recursive: true, force: true });
   fs.renameSync(from, to);
   const stateFile = path.join(to, 'state.json');
   if (fs.existsSync(stateFile)) {

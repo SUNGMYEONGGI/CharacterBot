@@ -1,7 +1,7 @@
 // The landing page reuses the app's own avatar renderer (and its pointer-following eyes).
 import { avatarSvg } from '../src/renderer/ui';
 
-const REPO = 'SUNGMYEONGGI/CharacterBot';
+const REPO = 'SUNGMYEONGGI/PixelBot';
 const DMG = 'PixelBot-arm64.dmg';
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;

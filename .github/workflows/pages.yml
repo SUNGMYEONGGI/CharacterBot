@@ -1,6 +1,6 @@
 name: Pages
 
-# Deploys the landing page in site/ to https://sungmyeonggi.github.io/CharacterBot/.
+# Deploys the landing page in site/ to https://sungmyeonggi.github.io/PixelBot/.
 # The page reads the latest release from the GitHub API, so new releases need no redeploy.
 on:
   push:

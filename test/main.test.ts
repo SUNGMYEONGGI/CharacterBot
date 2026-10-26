@@ -165,6 +165,7 @@ assert.equal(gateway.accountWrite('mcp__characterbot__remember'), false);
   fs.writeFileSync(path.join(from, 'state.json'), JSON.stringify({ dir: path.join(from, 'workspaces', 'bot_a'), other: `${from} Dev/x` }));
   const key = (p: string) => p.replace(/[^a-zA-Z0-9]/g, '-');
   fs.mkdirSync(path.join(projects, `${key(from)}-workspaces-bot-a`), { recursive: true });
+  fs.mkdirSync(path.join(to, 'Cache'), { recursive: true }); // made by Chromium before main runs
   assert.equal(rename.moveDataDir(from, to, projects), true);
   assert.equal(fs.existsSync(from), false);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(to, 'state.json'), 'utf8')), { dir: path.join(to, 'workspaces', 'bot_a'), other: `${from} Dev/x` });

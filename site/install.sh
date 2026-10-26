@@ -5,7 +5,7 @@ set -eu
 [ "$(uname -s)" = Darwin ] || { echo "PixelBot runs on macOS only." >&2; exit 1; }
 [ "$(uname -m)" = arm64 ] || { echo "PixelBot needs a Mac with Apple silicon." >&2; exit 1; }
 
-URL=https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest/download/PixelBot-arm64.dmg
+URL=https://github.com/SUNGMYEONGGI/PixelBot/releases/latest/download/PixelBot-arm64.dmg
 TMP=$(mktemp -d)
 MNT="$TMP/mnt"
 trap 'hdiutil detach -quiet "$MNT" 2>/dev/null || true; rm -rf "$TMP"' EXIT

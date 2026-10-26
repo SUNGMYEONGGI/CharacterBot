@@ -8,10 +8,10 @@
 
 Claude Bots run on the Claude Agent SDK with your Claude login. ChatGPT Bots and image generation run on the Codex SDK with your ChatGPT login. No API keys, no server, no database: one desktop app, and everything stays on your machine.
 
-[**Website**](https://sungmyeonggi.github.io/CharacterBot/) · [**Download**](https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest/download/PixelBot-arm64.dmg) · [**Quick start**](#quick-start) · [**Features**](#features) · [**Architecture**](#architecture) · [**Security model**](#security-model) · [**Build and release**](#build-and-release)
+[**Website**](https://sungmyeonggi.github.io/PixelBot/) · [**Download**](https://github.com/SUNGMYEONGGI/PixelBot/releases/latest/download/PixelBot-arm64.dmg) · [**Quick start**](#quick-start) · [**Features**](#features) · [**Architecture**](#architecture) · [**Security model**](#security-model) · [**Build and release**](#build-and-release)
 
-[![Release](https://github.com/SUNGMYEONGGI/CharacterBot/actions/workflows/release.yml/badge.svg)](https://github.com/SUNGMYEONGGI/CharacterBot/actions/workflows/release.yml)
-[![Latest release](https://img.shields.io/github/v/release/SUNGMYEONGGI/CharacterBot)](https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest)
+[![Release](https://github.com/SUNGMYEONGGI/PixelBot/actions/workflows/release.yml/badge.svg)](https://github.com/SUNGMYEONGGI/PixelBot/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/SUNGMYEONGGI/PixelBot)](https://github.com/SUNGMYEONGGI/PixelBot/releases/latest)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](./LICENSE)
 ![Platform: macOS arm64](https://img.shields.io/badge/platform-macOS%20arm64-lightgrey.svg)
@@ -67,14 +67,14 @@ Both engines see the same app tools (`ask_user`, `remember`, `message_bot`, ...)
 The quickest way installs the latest release into Applications and opens it:
 
 ```sh
-curl -fsSL https://sungmyeonggi.github.io/CharacterBot/install.sh | sh
+curl -fsSL https://sungmyeonggi.github.io/PixelBot/install.sh | sh
 ```
 
 Files downloaded with `curl` carry no quarantine flag, so macOS doesn't show the "Apple could not verify PixelBot" warning. The script is [`site/install.sh`](site/install.sh).
 
 To install by hand instead:
 
-1. Download [`PixelBot-arm64.dmg`](https://github.com/SUNGMYEONGGI/CharacterBot/releases/latest/download/PixelBot-arm64.dmg), the latest release (or pick one from [Releases](https://github.com/SUNGMYEONGGI/CharacterBot/releases)).
+1. Download [`PixelBot-arm64.dmg`](https://github.com/SUNGMYEONGGI/PixelBot/releases/latest/download/PixelBot-arm64.dmg), the latest release (or pick one from [Releases](https://github.com/SUNGMYEONGGI/PixelBot/releases)).
 2. Drag **PixelBot** to Applications.
 3. Builds without a Developer ID signature are ad-hoc signed, so Gatekeeper stops the first launch. Open System Settings › **Privacy & Security** and click **Open Anyway**, or run:
 
@@ -85,7 +85,7 @@ To install by hand instead:
 ### From source
 
 ```sh
-git clone https://github.com/SUNGMYEONGGI/CharacterBot.git
+git clone https://github.com/SUNGMYEONGGI/PixelBot.git
 cd PixelBot
 npm install
 npm start      # builds into out/ and launches Electron
@@ -264,7 +264,7 @@ The code is TypeScript in strict mode. `tsc` only type-checks; [esbuild](https:/
 | `src/renderer/` | The UI: `app.ts`, `settings.ts`, `apps.ts`, `rich.ts`, `ui.ts`, `index.html`, `styles.css`. |
 | `src/shared/types.ts` | Types both processes share: `Bot`, `Conv`, `Message`, `Settings`, `Broadcast`, `DesktopApi`. |
 | `test/main.test.ts` | Unit tests for the gateway, routines, store, tools, transcript, providers, MCP config and plugins. |
-| `site/` | The landing page at [sungmyeonggi.github.io/CharacterBot](https://sungmyeonggi.github.io/CharacterBot/). |
+| `site/` | The landing page at [sungmyeonggi.github.io/PixelBot](https://sungmyeonggi.github.io/PixelBot/). |
 
 The bridge is typed end to end: `act` takes an action name from `Actions` (`typeof actions` in `main.ts`), checks its arguments against that action's parameters and resolves to its return type, so a renamed action or a changed signature fails `npm run typecheck` in the renderer.
 
@@ -304,7 +304,7 @@ The download button on the website and in this README links to `releases/latest/
 
 ### Website
 
-`site/` is a static page bundled by `scripts/build-site.mjs` (it reuses the app's avatar renderer from `src/renderer/ui.ts`). `.github/workflows/pages.yml` deploys it to GitHub Pages at <https://sungmyeonggi.github.io/CharacterBot/> whenever it changes. The page reads the latest release's version, date and size from the GitHub API, so a new release shows up without a redeploy.
+`site/` is a static page bundled by `scripts/build-site.mjs` (it reuses the app's avatar renderer from `src/renderer/ui.ts`). `.github/workflows/pages.yml` deploys it to GitHub Pages at <https://sungmyeonggi.github.io/PixelBot/> whenever it changes. The page reads the latest release's version, date and size from the GitHub API, so a new release shows up without a redeploy.
 
 ```sh
 npm run site                      # _site/
