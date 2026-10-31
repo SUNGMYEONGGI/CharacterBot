@@ -15,6 +15,7 @@ import * as oauth from './oauth';
 import * as providers from './providers';
 import * as rename from './rename';
 import * as imagegen from './imagegen';
+import * as update from './update';
 import { pendingPrompt, mentionedBots } from './transcript';
 import os from 'node:os';
 import type { SandboxMode, ThreadEvent, ThreadItem } from '@openai/codex-sdk';
@@ -93,6 +94,15 @@ function persist() {
 }
 
 let broadcastTimer: NodeJS.Timeout | undefined;
+// A newer PixelBot release, found on launch and once a day (off in settings).
+let appUpdate: update.AppUpdate | null = null;
+async function checkAppUpdate() {
+  if (!state.settings.updateCheck) return;
+  try {
+    appUpdate = await update.check(app.getVersion());
+    broadcast();
+  } catch { /* offline or rate-limited: try again tomorrow */ }
+}
 function broadcast() {
   persist();
   clearTimeout(broadcastTimer);
@@ -114,6 +124,7 @@ function broadcast() {
       legacySecrets: fs.existsSync(legacySecretsFile()) ? (importingLegacy ? 'importing' : 'failed') : null,
       oauthConnected: Object.entries(secrets.__oauth || {}).filter(([, rec]) => rec.tokens).map(([id]) => id),
       hasGoogleClient: Boolean(secrets.__google_client),
+      appUpdate: state.settings.updateCheck ? appUpdate : null,
       providerKeys: state.settings.providers.filter((p) => secrets[`__provider_${p.id}`]).map((p) => p.id),
       claude: claudeStatus,
       chatgpt: chatgptStatus,
@@ -1256,6 +1267,7 @@ const actions = {
       if (response !== 0) for (const k of ['blockAccountWrites', 'autoReview', 'computerAccess'] as const) delete clean[k];
     }
     Object.assign(state.settings, clean);
+    if (clean.updateCheck) void checkAppUpdate();
     if (clean.theme) nativeTheme.themeSource = clean.theme; // native menus, scrollbars, dialogs
   },
   // ----- LLM providers (settings › 모델) -----
@@ -1645,6 +1657,8 @@ app.whenReady().then(() => {
   createWindow();
   void importLegacySecrets();
   setInterval(tickRoutines, 30_000);
+  void checkAppUpdate();
+  setInterval(checkAppUpdate, 24 * 60 * 60_000);
   syncTriggers();
 });
 app.on('before-quit', () => {

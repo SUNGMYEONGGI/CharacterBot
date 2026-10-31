@@ -45,6 +45,7 @@ function defaultState(): State {
       fullAccess: true,
       blockAccountWrites: true,
       micId: '',
+      updateCheck: true,
       onboarded: false,
     },
     bots: [bot],

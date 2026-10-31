@@ -12,6 +12,7 @@ import { substitute, toSdkConfig } from '../src/main/mcp';
 import * as providers from '../src/main/providers';
 import * as rename from '../src/main/rename';
 import * as xlsx from '../src/main/xlsx';
+import * as update from '../src/main/update';
 import { searchMessages } from '../src/shared/search';
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -266,4 +267,16 @@ for (let i = 0; i < ui.SHAPE_COUNT; i++) for (const size of [18, 40, 96]) {
 }
 assert.ok(!ui.avatarSvg(0, '#999', 40, { sleeping: true }).includes('class="eye"'));
 
-xlsxDone.then(() => console.log('ok'));
+// New-version check: compares major.minor.patch and links only to this repo's releases.
+assert.ok(update.newer('v0.3.1', '0.3.0') && update.newer('0.10.0', '0.9.9') && update.newer('1.0.0', '0.99.0'));
+assert.ok(!update.newer('v0.3.0', '0.3.0') && !update.newer('0.2.9', '0.3.0'));
+const release = (body: object, status = 200) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+const updateDone = (async () => {
+  const url = 'https://github.com/SUNGMYEONGGI/PixelBot/releases/tag/v0.4.0';
+  assert.deepStrictEqual(await update.check('0.3.0', release({ tag_name: 'v0.4.0', html_url: url })), { version: '0.4.0', url });
+  assert.strictEqual(await update.check('0.4.0', release({ tag_name: 'v0.4.0', html_url: url })), null);
+  assert.strictEqual((await update.check('0.3.0', release({ tag_name: 'v0.4.0', html_url: 'https://evil.example/x' })))?.url, 'https://github.com/SUNGMYEONGGI/PixelBot/releases/latest');
+  await assert.rejects(update.check('0.3.0', release({}, 403)));
+})();
+
+Promise.all([xlsxDone, updateDone]).then(() => console.log('ok'));

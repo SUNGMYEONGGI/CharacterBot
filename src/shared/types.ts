@@ -238,6 +238,7 @@ export interface Settings {
   fullAccess: boolean;
   blockAccountWrites: boolean;
   micId: string; // '' = the system default microphone
+  updateCheck: boolean; // look for a newer PixelBot release on launch and daily
   onboarded: boolean; // first-run setup (accounts, name, team) finished
   mainBotId?: string;
 }
@@ -328,6 +329,7 @@ export interface Broadcast extends State {
   legacySecrets: 'importing' | 'failed' | null; // CharacterBot 0.1.x secrets not yet imported
   oauthConnected: string[];
   hasGoogleClient: boolean;
+  appUpdate: { version: string; url: string } | null; // a newer release, if one was found
   providerKeys: string[];
   claude: LoginStatus | null;
   chatgpt: LoginStatus | null;
