@@ -314,7 +314,9 @@ const VIEWS: Record<Tab, () => Child[]> = {
       h('div', { class: 'group' },
         row('하드웨어 가속 사용', toggle(S.settings.hardwareAcceleration, (v) => { set({ hardwareAcceleration: v }); toast('앱을 다시 시작하면 적용돼요'); })),
         row('알림', toggle(S.settings.notifications, (v) => set({ notifications: v })), '앱이 뒤에 있을 때 Bot의 답장을 알림으로 받아요.'),
-        row('마이크', micSelect(), '음성 메모와 음성 채팅에 쓸 마이크예요.')),
+        row('마이크', micSelect(), '음성 메모와 음성 채팅에 쓸 마이크예요.'),
+        row('새 버전 알림', toggle(S.settings.updateCheck, (v) => set({ updateCheck: v })), '앱을 열 때와 하루에 한 번 GitHub에서 새 버전이 나왔는지 확인해요. 자동으로 설치하지는 않아요.'),
+        S.appUpdate ? row(`새 버전 ${S.appUpdate.version}`, link(S.appUpdate.url, '설치 방법'), `지금 쓰는 버전은 ${host?.version || ''}이에요.`) : null),
 
       h('h3', {}, 'Bot'),
       h('div', { class: 'group' },
